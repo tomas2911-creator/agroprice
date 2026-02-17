@@ -83,10 +83,11 @@ export const getSpread = (fecha?: string) =>
   fetchJSON(`/api/spread${fecha ? `?fecha=${fecha}` : ''}`);
 
 // Volatilidad
-export const getVolatilidad = (dias?: number, limit?: number) => {
+export const getVolatilidad = (dias?: number, limit?: number, mercados?: string[]) => {
   const sp = new URLSearchParams();
   if (dias) sp.set('dias', String(dias));
   if (limit) sp.set('limit', String(limit));
+  if (mercados?.length) sp.set('mercados', mercados.join(','));
   return fetchJSON(`/api/volatilidad?${sp.toString()}`);
 };
 

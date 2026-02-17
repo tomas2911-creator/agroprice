@@ -165,10 +165,12 @@ async def spread_mercados(fecha: Optional[date] = None):
 @app.get("/api/volatilidad")
 async def ranking_volatilidad(
     dias: int = Query(30, ge=7, le=365),
-    limit: int = Query(50, ge=1, le=200)
+    limit: int = Query(50, ge=1, le=200),
+    mercados: Optional[str] = None
 ):
     """Ranking de productos por volatilidad"""
-    return await get_volatilidad(dias, limit)
+    mercados_list = [m.strip() for m in mercados.split(",")] if mercados else None
+    return await get_volatilidad(dias, limit, mercados=mercados_list)
 
 
 @app.get("/api/estacionalidad")

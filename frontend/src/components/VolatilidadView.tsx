@@ -1,22 +1,36 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { getVolatilidad } from '../services/api';
+import { getVolatilidad, getMercados } from '../services/api';
 
 export default function VolatilidadView() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dias, setDias] = useState(30);
+  const [mercados, setMercados] = useState<any[]>([]);
+  const [selectedMercados, setSelectedMercados] = useState<string[]>([]);
 
-  const fetchData = (d: number) => {
+  useEffect(() => { getMercados().then(setMercados).catch(console.error); }, []);
+
+  const fetchData = (d?: number, mercs?: string[]) => {
+    const useDias = d ?? dias;
+    const useMercs = mercs ?? selectedMercados;
     setLoading(true);
-    setDias(d);
-    getVolatilidad(d, 50)
+    setDias(useDias);
+    getVolatilidad(useDias, 50, useMercs.length ? useMercs : undefined)
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { fetchData(30); }, []);
+
+  const toggleMercado = (nombre: string) => {
+    const next = selectedMercados.includes(nombre)
+      ? selectedMercados.filter((m) => m !== nombre)
+      : [...selectedMercados, nombre];
+    setSelectedMercados(next);
+    fetchData(undefined, next);
+  };
 
   const shortUnit = (u: string) => {
     if (!u) return '';
@@ -38,7 +52,7 @@ export default function VolatilidadView() {
           <h2 className="text-2xl font-bold text-gray-900">Ranking de Volatilidad</h2>
           <p className="text-sm text-gray-500">Productos con mayor variación de precio (coeficiente de variación)</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           {[7, 14, 30, 60, 90].map((d) => (
             <button
               key={d}
@@ -50,6 +64,31 @@ export default function VolatilidadView() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Filtro mercados */}
+      <div className="flex flex-wrap gap-1.5">
+        {mercados.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => toggleMercado(m.nombre)}
+            className={`px-2.5 py-1 rounded-md text-xs transition-colors
+              ${selectedMercados.includes(m.nombre)
+                ? 'bg-agro-600 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+          >
+            {m.nombre}
+          </button>
+        ))}
+        {selectedMercados.length > 0 && (
+          <button
+            onClick={() => { setSelectedMercados([]); fetchData(undefined, []); }}
+            className="px-2.5 py-1 rounded-md text-xs text-red-500 hover:bg-red-50"
+          >
+            Limpiar
+          </button>
+        )}
       </div>
 
       {/* Gráfico */}

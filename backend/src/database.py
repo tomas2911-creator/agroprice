@@ -478,9 +478,15 @@ async def get_spread_mercados(fecha: date = None) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-async def get_volatilidad(dias: int = 30, limit: int = 50) -> list[dict]:
+async def get_volatilidad(dias: int = 30, limit: int = 50, mercados: list[str] = None) -> list[dict]:
     """Ranking de productos por volatilidad de precio (mismo formato)"""
-    query = """
+    filtro_mercado = ""
+    params = [dias, limit]
+    if mercados:
+        filtro_mercado = f" AND m.nombre = ANY(${len(params) + 1})"
+        params.append(mercados)
+
+    query = f"""
         SELECT pr.nombre as producto, pr.categoria, m.nombre as mercado,
                p.variedad, p.calidad, p.unidad,
                ROUND(STDDEV(p.precio_promedio)::numeric, 2) as desviacion,
@@ -496,6 +502,7 @@ async def get_volatilidad(dias: int = 30, limit: int = 50) -> list[dict]:
         JOIN mercados m ON p.mercado_id = m.id
         WHERE p.fecha >= CURRENT_DATE - $1 * INTERVAL '1 day'
         AND p.precio_promedio IS NOT NULL
+        {filtro_mercado}
         GROUP BY pr.nombre, pr.categoria, m.nombre, p.variedad, p.calidad, p.unidad
         HAVING COUNT(*) >= 5
         ORDER BY coef_variacion DESC NULLS LAST
@@ -503,7 +510,7 @@ async def get_volatilidad(dias: int = 30, limit: int = 50) -> list[dict]:
     """
 
     async with pool.acquire() as conn:
-        rows = await conn.fetch(query, dias, limit)
+        rows = await conn.fetch(query, *params)
         return [dict(r) for r in rows]
 
 

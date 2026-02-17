@@ -13,6 +13,7 @@ export default function SerieTemporalView() {
   const [fechaFin, setFechaFin] = useState('');
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [searchProd, setSearchProd] = useState('');
   const [subcats, setSubcats] = useState<{variedades: string[], calidades: string[], unidades: string[]}>({variedades: [], calidades: [], unidades: []});
   const [selVariedad, setSelVariedad] = useState('');
@@ -35,6 +36,7 @@ export default function SerieTemporalView() {
   const fetchSerie = () => {
     if (!selectedProducto) return;
     setLoading(true);
+    setHasSearched(true);
     getSerieTemporal({
       producto: selectedProducto,
       mercados: selectedMercados.length ? selectedMercados : undefined,
@@ -45,7 +47,7 @@ export default function SerieTemporalView() {
       unidad: selUnidad || undefined,
     })
       .then(setData)
-      .catch(console.error)
+      .catch((err) => { console.error(err); setData([]); })
       .finally(() => setLoading(false));
   };
 
@@ -196,8 +198,14 @@ export default function SerieTemporalView() {
           </div>
         )}
 
-        {data.length === 0 && !loading && selectedProducto && (
+        {!loading && !hasSearched && (
           <p className="text-center text-gray-400 py-8">Selecciona un producto y presiona "Ver Serie"</p>
+        )}
+        {data.length === 0 && !loading && hasSearched && (
+          <div className="text-center py-8">
+            <p className="text-gray-500 font-medium">Sin resultados para esta combinación</p>
+            <p className="text-gray-400 text-sm mt-1">Prueba quitando filtros de variedad/calidad/unidad o selecciona otros mercados</p>
+          </div>
         )}
       </div>
     </div>

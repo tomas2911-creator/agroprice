@@ -8,20 +8,29 @@ export default function PreciosView() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  const fetchData = useCallback((filters?: FilterState) => {
+  const fetchData = useCallback((filters?: FilterState, searchTerm?: string) => {
     setLoading(true);
+    const prodFilter = searchTerm
+      ? [searchTerm.charAt(0).toUpperCase() + searchTerm.slice(1).toLowerCase()]
+      : filters?.productos?.length ? filters.productos : undefined;
     getPrecios({
       fecha_inicio: filters?.fechaInicio || undefined,
       fecha_fin: filters?.fechaFin || undefined,
       mercados: filters?.mercados?.length ? filters.mercados : undefined,
-      productos: filters?.productos?.length ? filters.productos : undefined,
+      productos: prodFilter,
       categorias: filters?.categorias?.length ? filters.categorias : undefined,
-      limit: 1000,
+      limit: 2000,
     })
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && search.trim()) {
+      fetchData(undefined, search.trim());
+    }
+  };
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -39,9 +48,10 @@ export default function PreciosView() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar producto o mercado..."
+              placeholder="Buscar y presiona Enter..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
               className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-64"
             />
           </div>
