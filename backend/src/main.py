@@ -34,6 +34,34 @@ logging.basicConfig(
 logger = logging.getLogger("agroprice")
 
 
+async def _auto_setup_clima():
+    """Background task: seed zonas, importar clima si no hay datos, reseed para cubrir nuevos productos"""
+    try:
+        # Primer seed
+        result = await seed_zonas()
+        logger.info(f"Auto-setup clima: seed inicial → {result}")
+
+        # Verificar si hay datos climáticos
+        from src.database import pool as db_pool
+        async with db_pool.acquire() as conn:
+            count = await conn.fetchval("SELECT COUNT(*) FROM clima_diario")
+
+        if count == 0:
+            logger.info("Auto-setup clima: no hay datos climáticos, importando últimos 180 días…")
+            r = await importar_clima_todas_zonas(dias_atras=180)
+            logger.info(f"Auto-setup clima: importados {r['registros_total']} registros de {r['zonas']} zonas")
+        else:
+            logger.info(f"Auto-setup clima: ya hay {count} registros climáticos")
+            # Actualizar últimos 7 días por si acaso
+            await importar_clima_todas_zonas(dias_atras=7)
+
+        # Re-seed para cubrir productos importados después del primer seed
+        result2 = await seed_zonas()
+        logger.info(f"Auto-setup clima: re-seed → {result2}")
+    except Exception as e:
+        logger.error(f"Auto-setup clima falló: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup y shutdown"""
@@ -44,7 +72,9 @@ async def lifespan(app: FastAPI):
         await seed_zonas()
     except Exception as e:
         logger.warning(f"Seed zonas fallido (productos aún no importados?): {e}")
-    logger.info("AgroPrice iniciado")
+    # Lanzar auto-setup de clima como tarea en background (no bloquea el startup)
+    asyncio.create_task(_auto_setup_clima())
+    logger.info("AgroPrice iniciado (clima importándose en background)")
     yield
     detener_scheduler()
     await close_db()

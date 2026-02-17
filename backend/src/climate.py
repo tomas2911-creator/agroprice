@@ -313,70 +313,98 @@ async def get_clima_precio_serie(producto: str, mercado: str = None,
     if not variables:
         variables = ["temp_max"]
 
-    # Obtener zona(s) del producto (la de mayor peso para el mes actual)
-    # Busca match exacto primero, si no, busca por nombre base (ej: "Tomate Larga Vida" → "Tomate")
+    dias = int(dias)
     mes_actual = date.today().month
+    fecha_desde = date.today() - timedelta(days=dias)
+
     async with pool.acquire() as conn:
-        zona_row = await conn.fetchrow("""
-            SELECT z.id, z.nombre, pz.lag_dias, pz.peso
-            FROM producto_zona pz
-            JOIN zonas_produccion z ON z.id = pz.zona_id
-            JOIN productos pr ON pr.id = pz.producto_id
-            WHERE (pr.nombre = $1 OR $1 ILIKE pr.nombre || ' %')
-            AND (pz.mes_inicio IS NULL OR
-                 (pz.mes_inicio <= pz.mes_fin AND $2 BETWEEN pz.mes_inicio AND pz.mes_fin) OR
-                 (pz.mes_inicio > pz.mes_fin AND ($2 >= pz.mes_inicio OR $2 <= pz.mes_fin)))
-            ORDER BY pz.peso DESC
-            LIMIT 1
-        """, producto, mes_actual)
+        # 1) Buscar zona del producto (match exacto + parcial)
+        try:
+            zona_row = await conn.fetchrow("""
+                SELECT z.id, z.nombre, pz.lag_dias, pz.peso
+                FROM producto_zona pz
+                JOIN zonas_produccion z ON z.id = pz.zona_id
+                JOIN productos pr ON pr.id = pz.producto_id
+                WHERE (pr.nombre = $1 OR $1 ILIKE pr.nombre || ' %')
+                AND (pz.mes_inicio IS NULL OR
+                     (pz.mes_inicio <= pz.mes_fin AND $2 BETWEEN pz.mes_inicio AND pz.mes_fin) OR
+                     (pz.mes_inicio > pz.mes_fin AND ($2 >= pz.mes_inicio OR $2 <= pz.mes_fin)))
+                ORDER BY pz.peso DESC
+                LIMIT 1
+            """, producto, mes_actual)
+        except Exception as e:
+            logger.error(f"Error buscando zona para {producto}: {e}")
+            zona_row = None
 
-        if not zona_row:
-            return {"producto": producto, "zona": None, "series": [], "variables": variables}
+        zona_id = None
+        zona_nombre = None
+        lag = 7
 
-        zona_id = zona_row["id"]
-        zona_nombre = zona_row["nombre"]
-        lag = zona_row["lag_dias"] or 7
+        if zona_row:
+            zona_id = zona_row["id"]
+            zona_nombre = zona_row["nombre"]
+            lag = zona_row["lag_dias"] or 7
 
-        # Serie de precios (promedio diario del producto)
-        mercado_filter = ""
-        params = [producto, dias]
-        if mercado:
-            mercado_filter = " AND m.nombre = $3"
-            params.append(mercado)
+        # 2) Serie de precios (siempre, aunque no haya zona)
+        try:
+            mercado_filter = ""
+            params: list = [producto, fecha_desde]
+            if mercado:
+                mercado_filter = " AND m.nombre = $3"
+                params.append(mercado)
 
-        precios = await conn.fetch(f"""
-            SELECT p.fecha, ROUND(AVG(p.precio_promedio)::numeric, 0) as precio
-            FROM precios p
-            JOIN productos pr ON p.producto_id = pr.id
-            JOIN mercados m ON p.mercado_id = m.id
-            WHERE pr.nombre = $1
-            AND p.fecha >= CURRENT_DATE - $2 * INTERVAL '1 day'
-            AND p.precio_promedio IS NOT NULL
-            {mercado_filter}
-            GROUP BY p.fecha
-            ORDER BY p.fecha
-        """, *params)
+            precios = await conn.fetch(f"""
+                SELECT p.fecha, ROUND(AVG(p.precio_promedio)::numeric, 0) as precio
+                FROM precios p
+                JOIN productos pr ON p.producto_id = pr.id
+                JOIN mercados m ON p.mercado_id = m.id
+                WHERE pr.nombre = $1
+                AND p.fecha >= $2
+                AND p.precio_promedio IS NOT NULL
+                {mercado_filter}
+                GROUP BY p.fecha
+                ORDER BY p.fecha
+            """, *params)
+        except Exception as e:
+            logger.error(f"Error consultando precios de {producto}: {e}")
+            precios = []
 
-        # Serie de clima (todas las variables seleccionadas, con lag aplicado)
-        cols = ", ".join(variables)
-        clima = await conn.fetch(f"""
-            SELECT fecha + $3 * INTERVAL '1 day' as fecha_efecto,
-                   {cols}
-            FROM clima_diario
-            WHERE zona_id = $1
-            AND fecha >= CURRENT_DATE - ($2 + $3) * INTERVAL '1 day'
-            ORDER BY fecha
-        """, zona_id, dias, lag)
+        # 3) Serie de clima (solo si tenemos zona)
+        clima = []
+        if zona_id:
+            try:
+                cols = ", ".join(variables)
+                fecha_clima_desde = fecha_desde - timedelta(days=lag)
+                clima = await conn.fetch(f"""
+                    SELECT fecha + CAST($3 AS INTEGER) * INTERVAL '1 day' as fecha_efecto,
+                           {cols}
+                    FROM clima_diario
+                    WHERE zona_id = $1
+                    AND fecha >= $2
+                    ORDER BY fecha
+                """, zona_id, fecha_clima_desde, lag)
+            except Exception as e:
+                logger.error(f"Error consultando clima zona {zona_id}: {e}")
+                clima = []
 
     # Crear mapas por fecha
-    precio_map = {str(r["fecha"]): float(r["precio"]) for r in precios}
+    precio_map = {}
+    for r in precios:
+        try:
+            precio_map[str(r["fecha"])] = float(r["precio"])
+        except (TypeError, ValueError):
+            pass
 
     clima_maps: dict[str, dict] = {v: {} for v in variables}
     for r in clima:
-        f_str = str(r["fecha_efecto"].date()) if hasattr(r["fecha_efecto"], 'date') else str(r["fecha_efecto"])
-        for v in variables:
-            val = r[v]
-            clima_maps[v][f_str] = float(val) if val is not None else None
+        try:
+            fe = r["fecha_efecto"]
+            f_str = str(fe.date()) if hasattr(fe, 'date') else str(fe)
+            for v in variables:
+                val = r[v]
+                clima_maps[v][f_str] = float(val) if val is not None else None
+        except Exception:
+            pass
 
     # Combinar en serie alineada
     all_fecha_sets = [set(precio_map.keys())]
