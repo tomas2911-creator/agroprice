@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import openpyxl
 import logging
@@ -349,22 +350,34 @@ async def importar_boletin(fecha: date, forzar: bool = False) -> dict:
 
 
 async def importar_historico(fecha_inicio: date, fecha_fin: date = None,
-                             forzar: bool = False) -> list[dict]:
-    """Importar boletines históricos en un rango de fechas"""
+                             forzar: bool = False, concurrencia: int = 8) -> list[dict]:
+    """Importar boletines históricos en paralelo con semáforo"""
     if fecha_fin is None:
         fecha_fin = date.today()
 
-    resultados = []
+    # Generar lista de fechas hábiles
+    fechas = []
     fecha_actual = fecha_inicio
-
     while fecha_actual <= fecha_fin:
-        # Solo días hábiles (lunes a viernes)
-        if fecha_actual.weekday() < 5:
-            resultado = await importar_boletin(fecha_actual, forzar=forzar)
-            resultados.append(resultado)
-            logger.info(f"Importación {fecha_actual}: {resultado['estado']} ({resultado['registros']} registros)")
-
+        if fecha_actual.weekday() < 5:  # Solo lunes a viernes
+            fechas.append(fecha_actual)
         fecha_actual += timedelta(days=1)
+
+    if not fechas:
+        return []
+
+    logger.info(f"Importación paralela: {len(fechas)} fechas con concurrencia={concurrencia}")
+
+    semaforo = asyncio.Semaphore(concurrencia)
+
+    async def importar_con_semaforo(f: date) -> dict:
+        async with semaforo:
+            resultado = await importar_boletin(f, forzar=forzar)
+            logger.info(f"  {f}: {resultado['estado']} ({resultado['registros']} reg)")
+            return resultado
+
+    # Ejecutar todas en paralelo (limitadas por semáforo)
+    resultados = await asyncio.gather(*[importar_con_semaforo(f) for f in fechas])
 
     # Resumen
     total_ok = sum(1 for r in resultados if r["estado"] == "ok")
@@ -376,7 +389,7 @@ async def importar_historico(fecha_inicio: date, fecha_fin: date = None,
                 f"{total_registros} registros, {total_no_disp} no disponibles, "
                 f"{total_ya_imp} ya importados")
 
-    return resultados
+    return list(resultados)
 
 
 async def importar_hoy() -> dict:
