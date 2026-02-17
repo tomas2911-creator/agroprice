@@ -3,10 +3,10 @@ import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer
 } from 'recharts';
-import { CloudRain, Thermometer, Sun, Wind, AlertTriangle, Search, RefreshCw } from 'lucide-react';
+import { CloudRain, Thermometer, Sun, Wind, AlertTriangle, Search } from 'lucide-react';
 import {
   getMercados, getProductos, getClimaPrecio, getClimaAlertas,
-  getClimaCorrelacion, importarClima, importarClimaHistorico
+  getClimaCorrelacion
 } from '../services/api';
 
 const VARIABLES = [
@@ -67,8 +67,6 @@ export default function ClimaView() {
   const [correlaciones, setCorrelaciones] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingCorr, setLoadingCorr] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [importingHist, setImportingHist] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,24 +99,6 @@ export default function ClimaView() {
       .finally(() => setLoadingCorr(false));
   };
 
-  const handleImport = () => {
-    if (!confirm('¿Importar datos climáticos de los últimos 90 días para todas las zonas?')) return;
-    setImporting(true);
-    importarClima(90)
-      .then((r: any) => alert(`Importado: ${r.registros_total} registros de ${r.zonas} zonas`))
-      .catch((e: any) => alert(`Error: ${e.message}`))
-      .finally(() => setImporting(false));
-  };
-
-  const handleImportHistorico = () => {
-    if (!confirm('¿Importar TODO el historial de clima desde la primera fecha de precios? Esto puede tomar varios minutos.')) return;
-    setImportingHist(true);
-    importarClimaHistorico()
-      .then((r: any) => alert(`Histórico completo: ${r.registros_total} registros (${r.fecha_inicio} → ${r.fecha_fin}), ${r.chunks_ok} chunks OK, ${r.chunks_error} errores`))
-      .catch((e: any) => alert(`Error: ${e.message}`))
-      .finally(() => setImportingHist(false));
-  };
-
   const filteredProductos = productos.filter((p: any) =>
     !searchProd || p.nombre.toLowerCase().includes(searchProd.toLowerCase())
   );
@@ -149,24 +129,6 @@ export default function ClimaView() {
           <p className="text-gray-500 text-sm mt-1">
             Correlación entre variables climáticas de zonas de producción y precios de mercado
           </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleImportHistorico}
-            disabled={importingHist || importing}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 border border-amber-200 disabled:opacity-50 text-sm font-medium"
-          >
-            <RefreshCw className={`w-4 h-4 ${importingHist ? 'animate-spin' : ''}`} />
-            {importingHist ? 'Importando histórico…' : 'Importar Histórico'}
-          </button>
-          <button
-            onClick={handleImport}
-            disabled={importing || importingHist}
-            className="flex items-center gap-2 px-4 py-2 bg-cyan-50 text-cyan-700 rounded-lg hover:bg-cyan-100 border border-cyan-200 disabled:opacity-50 text-sm font-medium"
-          >
-            <RefreshCw className={`w-4 h-4 ${importing ? 'animate-spin' : ''}`} />
-            {importing ? 'Importando…' : 'Últimos 90d'}
-          </button>
         </div>
       </div>
 
@@ -335,8 +297,7 @@ export default function ClimaView() {
           </h3>
           <p className="text-red-600 text-sm">{error}</p>
           <p className="text-red-400 text-xs mt-2">
-            Posibles causas: datos climáticos no importados, o producto sin zona mapeada.
-            Prueba con "Importar Histórico" y luego re-intenta.
+            Los datos climáticos se obtienen automáticamente. Si el error persiste, intenta con otro producto o período más corto.
           </p>
         </div>
       )}

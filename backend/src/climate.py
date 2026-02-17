@@ -1,13 +1,20 @@
 """
-Módulo de clima: fetch de Open-Meteo, seed de zonas, queries de clima × precios
+Módulo de clima: fetch de Open-Meteo, seed de zonas, queries de clima × precios.
+Datos climáticos se obtienen automáticamente de Open-Meteo (gratis, sin API key).
 """
 import httpx
 import logging
 from datetime import date, timedelta
 
-from src.database import pool
-
 logger = logging.getLogger("agroprice.climate")
+
+
+def _get_pool():
+    """Obtener pool de conexiones dinámicamente (evita import de pool=None al inicio)"""
+    from src.database import pool
+    if pool is None:
+        raise RuntimeError("Pool de base de datos no inicializado. Esperar a que init_db() termine.")
+    return pool
 
 # ============== ZONAS DE PRODUCCIÓN ==============
 
@@ -103,7 +110,7 @@ PRODUCTO_ZONA_MAP = [
 async def seed_zonas():
     """Insertar zonas de producción y mapeos si no existen.
     Usa ILIKE para matchear productos parcialmente (ej: 'Tomate' matchea 'Tomate Larga Vida')."""
-    async with pool.acquire() as conn:
+    async with _get_pool().acquire() as conn:
         # Insertar zonas
         for z in ZONAS:
             await conn.execute("""
@@ -180,7 +187,7 @@ async def fetch_clima_openmeteo(zona_id: int, lat: float, lon: float,
             viento[i] if i < len(viento) else None,
         ))
 
-    async with pool.acquire() as conn:
+    async with _get_pool().acquire() as conn:
         await conn.executemany("""
             INSERT INTO clima_diario (fecha, zona_id, temp_max, temp_min, precipitacion,
                                       humedad, radiacion_solar, viento_max)
@@ -200,7 +207,7 @@ async def importar_clima_todas_zonas(dias_atras: int = 90) -> dict:
     fecha_fin = date.today() - timedelta(days=2)  # Open-Meteo tiene ~2 días de lag
     fecha_inicio = fecha_fin - timedelta(days=dias_atras)
 
-    async with pool.acquire() as conn:
+    async with _get_pool().acquire() as conn:
         zonas = await conn.fetch("SELECT id, nombre, latitud, longitud FROM zonas_produccion")
 
     total = 0
@@ -222,7 +229,7 @@ async def importar_clima_historico(fecha_inicio: date = None, fecha_fin: date = 
     if fecha_fin is None:
         fecha_fin = date.today() - timedelta(days=2)
 
-    async with pool.acquire() as conn:
+    async with _get_pool().acquire() as conn:
         zonas = await conn.fetch("SELECT id, nombre, latitud, longitud FROM zonas_produccion")
 
         if fecha_inicio is None:
@@ -278,18 +285,48 @@ async def importar_clima_diario():
         logger.error(f"Error en importación diaria de clima: {e}")
 
 
+# ============== AUTO-FETCH ON DEMAND ==============
+
+async def _ensure_clima_data(zona_id: int, lat: float, lon: float,
+                              fecha_desde: date, fecha_hasta: date):
+    """Verificar si hay datos climáticos para el rango. Si faltan, fetch automático de Open-Meteo."""
+    async with _get_pool().acquire() as conn:
+        count = await conn.fetchval("""
+            SELECT COUNT(*) FROM clima_diario
+            WHERE zona_id = $1 AND fecha >= $2 AND fecha <= $3
+        """, zona_id, fecha_desde, fecha_hasta)
+
+    # Si tenemos menos del 50% de los días esperados, fetch de Open-Meteo
+    dias_esperados = (fecha_hasta - fecha_desde).days + 1
+    if count < dias_esperados * 0.5:
+        logger.info(f"Auto-fetch clima zona {zona_id}: {count}/{dias_esperados} días, descargando de Open-Meteo…")
+        # Open-Meteo tiene ~2 días de lag
+        fecha_fin_real = min(fecha_hasta, date.today() - timedelta(days=2))
+        if fecha_desde <= fecha_fin_real:
+            try:
+                # Fetch en chunks de 90 días
+                CHUNK = 90
+                chunk_start = fecha_desde
+                while chunk_start <= fecha_fin_real:
+                    chunk_end = min(chunk_start + timedelta(days=CHUNK - 1), fecha_fin_real)
+                    await fetch_clima_openmeteo(zona_id, lat, lon, chunk_start, chunk_end)
+                    chunk_start = chunk_end + timedelta(days=1)
+            except Exception as e:
+                logger.error(f"Auto-fetch clima zona {zona_id} falló: {e}")
+
+
 # ============== QUERIES ==============
 
 async def get_zonas() -> list[dict]:
     """Listar zonas de producción"""
-    async with pool.acquire() as conn:
+    async with _get_pool().acquire() as conn:
         rows = await conn.fetch("SELECT * FROM zonas_produccion ORDER BY nombre")
         return [dict(r) for r in rows]
 
 
 async def get_clima_serie(zona_id: int, dias: int = 90) -> list[dict]:
     """Serie temporal de clima para una zona"""
-    async with pool.acquire() as conn:
+    async with _get_pool().acquire() as conn:
         rows = await conn.fetch("""
             SELECT fecha, temp_max, temp_min, precipitacion, humedad,
                    radiacion_solar, viento_max
@@ -317,7 +354,7 @@ async def get_clima_precio_serie(producto: str, mercado: str = None,
     mes_actual = date.today().month
     fecha_desde = date.today() - timedelta(days=dias)
 
-    async with pool.acquire() as conn:
+    async with _get_pool().acquire() as conn:
         # 1) Buscar zona del producto (match exacto + parcial)
         try:
             zona_row = await conn.fetchrow("""
@@ -344,6 +381,20 @@ async def get_clima_precio_serie(producto: str, mercado: str = None,
             zona_id = zona_row["id"]
             zona_nombre = zona_row["nombre"]
             lag = zona_row["lag_dias"] or 7
+
+        # 1b) Auto-fetch: si hay zona, asegurar que tenemos datos climáticos
+        if zona_id:
+            try:
+                zona_info = await conn.fetchrow(
+                    "SELECT latitud, longitud FROM zonas_produccion WHERE id = $1", zona_id)
+                if zona_info:
+                    fecha_clima_ini = fecha_desde - timedelta(days=lag)
+                    fecha_clima_fin = date.today() - timedelta(days=2)
+                    await _ensure_clima_data(
+                        zona_id, zona_info["latitud"], zona_info["longitud"],
+                        fecha_clima_ini, fecha_clima_fin)
+            except Exception as e:
+                logger.warning(f"Auto-fetch clima falló para zona {zona_id}: {e}")
 
         # 2) Serie de precios (siempre, aunque no haya zona)
         try:
@@ -432,7 +483,7 @@ async def get_clima_precio_serie(producto: str, mercado: str = None,
 async def get_alertas_clima() -> list[dict]:
     """Detectar alertas climáticas recientes: heladas, lluvias intensas, olas de calor.
     Una fila puede generar múltiples alertas si cumple varias condiciones."""
-    async with pool.acquire() as conn:
+    async with _get_pool().acquire() as conn:
         rows = await conn.fetch("""
             SELECT a.fecha, a.zona, a.temp_min, a.temp_max,
                    a.precipitacion, a.viento_max, a.tipo_alerta
@@ -458,7 +509,7 @@ async def get_alertas_clima() -> list[dict]:
 
 async def get_clima_correlacion(producto: str, dias: int = 180) -> list[dict]:
     """Correlación entre precio de un producto y cada variable climática de cada zona"""
-    async with pool.acquire() as conn:
+    async with _get_pool().acquire() as conn:
         zonas = await conn.fetch("SELECT id, nombre FROM zonas_produccion ORDER BY nombre")
 
         resultados = []

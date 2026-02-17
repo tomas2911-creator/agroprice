@@ -20,7 +20,6 @@ from src.scraper import importar_boletin, importar_historico
 from src.scheduler import iniciar_scheduler, detener_scheduler
 from src.climate import (
     seed_zonas, importar_clima_todas_zonas, importar_clima_historico,
-    importar_clima_diario,
     get_zonas, get_clima_serie, get_clima_precio_serie,
     get_alertas_clima, get_clima_correlacion
 )
@@ -35,27 +34,15 @@ logger = logging.getLogger("agroprice")
 
 
 async def _auto_setup_clima():
-    """Background task: seed zonas, importar clima si no hay datos, reseed para cubrir nuevos productos"""
+    """Background task: seed zonas y mapeos producto→zona.
+    Los datos climáticos se descargan on-demand cuando el usuario consulta."""
     try:
-        # Primer seed
+        # Esperar 5s para que init_db() complete
+        await asyncio.sleep(5)
         result = await seed_zonas()
-        logger.info(f"Auto-setup clima: seed inicial → {result}")
-
-        # Verificar si hay datos climáticos
-        from src.database import pool as db_pool
-        async with db_pool.acquire() as conn:
-            count = await conn.fetchval("SELECT COUNT(*) FROM clima_diario")
-
-        if count == 0:
-            logger.info("Auto-setup clima: no hay datos climáticos, importando últimos 180 días…")
-            r = await importar_clima_todas_zonas(dias_atras=180)
-            logger.info(f"Auto-setup clima: importados {r['registros_total']} registros de {r['zonas']} zonas")
-        else:
-            logger.info(f"Auto-setup clima: ya hay {count} registros climáticos")
-            # Actualizar últimos 7 días por si acaso
-            await importar_clima_todas_zonas(dias_atras=7)
-
-        # Re-seed para cubrir productos importados después del primer seed
+        logger.info(f"Auto-setup clima: seed → {result}")
+        # Re-seed para cubrir productos que se importaron antes del primer seed
+        await asyncio.sleep(2)
         result2 = await seed_zonas()
         logger.info(f"Auto-setup clima: re-seed → {result2}")
     except Exception as e:
