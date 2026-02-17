@@ -9,6 +9,7 @@ import VolatilidadView from './components/VolatilidadView';
 import EstacionalidadView from './components/EstacionalidadView';
 import CorrelacionesView from './components/CorrelacionesView';
 import HeatmapView from './components/HeatmapView';
+import ClimaView from './components/ClimaView';
 import ExportarView from './components/ExportarView';
 
 const views: Record<string, React.FC> = {
@@ -21,6 +22,7 @@ const views: Record<string, React.FC> = {
   'estacionalidad': EstacionalidadView,
   'correlaciones': CorrelacionesView,
   'heatmap': HeatmapView,
+  'clima': ClimaView,
   'exportar': ExportarView,
 };
 

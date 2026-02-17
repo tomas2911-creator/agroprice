@@ -83,6 +83,41 @@ async def init_db():
             CREATE INDEX IF NOT EXISTS idx_precios_fecha_mercado ON precios(fecha, mercado_id);
             CREATE INDEX IF NOT EXISTS idx_precios_fecha_producto ON precios(fecha, producto_id);
             CREATE INDEX IF NOT EXISTS idx_precios_producto_formato ON precios(producto_id, variedad, calidad, unidad);
+
+            -- Tablas de clima
+            CREATE TABLE IF NOT EXISTS zonas_produccion (
+                id SERIAL PRIMARY KEY,
+                nombre TEXT UNIQUE NOT NULL,
+                latitud REAL NOT NULL,
+                longitud REAL NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS producto_zona (
+                id SERIAL PRIMARY KEY,
+                producto_id INTEGER REFERENCES productos(id),
+                zona_id INTEGER REFERENCES zonas_produccion(id),
+                peso REAL DEFAULT 1.0,
+                mes_inicio INTEGER,
+                mes_fin INTEGER,
+                lag_dias INTEGER DEFAULT 7
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_producto_zona
+                ON producto_zona (producto_id, zona_id, COALESCE(mes_inicio, 0));
+
+            CREATE TABLE IF NOT EXISTS clima_diario (
+                fecha DATE NOT NULL,
+                zona_id INTEGER REFERENCES zonas_produccion(id),
+                temp_max REAL,
+                temp_min REAL,
+                precipitacion REAL,
+                humedad REAL,
+                radiacion_solar REAL,
+                viento_max REAL,
+                PRIMARY KEY (fecha, zona_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_clima_zona_fecha ON clima_diario(zona_id, fecha);
         """)
     logger.info("Base de datos inicializada correctamente")
 

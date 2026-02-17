@@ -18,6 +18,11 @@ from src.database import (
 )
 from src.scraper import importar_boletin, importar_historico
 from src.scheduler import iniciar_scheduler, detener_scheduler
+from src.climate import (
+    seed_zonas, importar_clima_todas_zonas,
+    get_zonas, get_clima_serie, get_clima_precio_serie,
+    get_alertas_clima, get_clima_correlacion
+)
 # Models (usados internamente por scraper/database)
 
 # Logging
@@ -33,6 +38,11 @@ async def lifespan(app: FastAPI):
     """Startup y shutdown"""
     await init_db()
     iniciar_scheduler()
+    # Seed zonas de producción (idempotente)
+    try:
+        await seed_zonas()
+    except Exception as e:
+        logger.warning(f"Seed zonas fallido (productos aún no importados?): {e}")
     logger.info("AgroPrice iniciado")
     yield
     detener_scheduler()
@@ -201,6 +211,49 @@ async def correlaciones(
 async def heatmap(fecha: Optional[date] = None, dias: Optional[int] = None):
     """Datos para heatmap de precios"""
     return await get_heatmap(fecha, dias=dias)
+
+
+# ============== ENDPOINTS DE CLIMA ==============
+
+@app.get("/api/clima/zonas")
+async def listar_zonas():
+    """Listar zonas de producción"""
+    return await get_zonas()
+
+
+@app.get("/api/clima/serie")
+async def clima_serie(zona_id: int, dias: int = Query(90, ge=7, le=365)):
+    """Serie temporal de clima para una zona"""
+    return await get_clima_serie(zona_id, dias)
+
+
+@app.get("/api/clima/precio")
+async def clima_precio(
+    producto: str,
+    mercado: Optional[str] = None,
+    dias: int = Query(90, ge=7, le=365),
+    variable: str = "temp_max"
+):
+    """Serie combinada precio × clima de un producto"""
+    return await get_clima_precio_serie(producto, mercado, dias, variable)
+
+
+@app.get("/api/clima/alertas")
+async def clima_alertas():
+    """Alertas climáticas recientes (heladas, lluvias, etc.)"""
+    return await get_alertas_clima()
+
+
+@app.get("/api/clima/correlacion")
+async def clima_correlacion(producto: str, dias: int = Query(180, ge=30, le=730)):
+    """Correlación clima × precio para un producto"""
+    return await get_clima_correlacion(producto, dias)
+
+
+@app.post("/api/clima/importar")
+async def importar_clima(dias: int = Query(90, ge=7, le=730)):
+    """Importar datos climáticos de Open-Meteo para todas las zonas"""
+    return await importar_clima_todas_zonas(dias)
 
 
 # ============== ENDPOINTS DE IMPORTACIÓN ==============

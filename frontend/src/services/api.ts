@@ -136,6 +136,34 @@ export const getHeatmap = (params?: { fecha?: string; dias?: number }) => {
   return fetchJSON(`/api/heatmap${qs ? `?${qs}` : ''}`);
 };
 
+// Clima
+export const getClimaZonas = () => fetchJSON('/api/clima/zonas');
+export const getClimaSerie = (zonaId: number, dias?: number) => {
+  const sp = new URLSearchParams();
+  sp.set('zona_id', String(zonaId));
+  if (dias) sp.set('dias', String(dias));
+  return fetchJSON(`/api/clima/serie?${sp.toString()}`);
+};
+export const getClimaPrecio = (params: {
+  producto: string; mercado?: string; dias?: number; variable?: string;
+}) => {
+  const sp = new URLSearchParams();
+  sp.set('producto', params.producto);
+  if (params.mercado) sp.set('mercado', params.mercado);
+  if (params.dias) sp.set('dias', String(params.dias));
+  if (params.variable) sp.set('variable', params.variable);
+  return fetchJSON(`/api/clima/precio?${sp.toString()}`);
+};
+export const getClimaAlertas = () => fetchJSON('/api/clima/alertas');
+export const getClimaCorrelacion = (producto: string, dias?: number) => {
+  const sp = new URLSearchParams();
+  sp.set('producto', producto);
+  if (dias) sp.set('dias', String(dias));
+  return fetchJSON(`/api/clima/correlacion?${sp.toString()}`);
+};
+export const importarClima = (dias?: number) =>
+  fetchJSON(`/api/clima/importar${dias ? `?dias=${dias}` : ''}`, { method: 'POST' });
+
 // Export CSV
 export const exportCSV = (params: {
   fecha_inicio?: string;
