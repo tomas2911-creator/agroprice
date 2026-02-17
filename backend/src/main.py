@@ -348,17 +348,6 @@ async def exportar_csv(
     )
 
 
-@app.post("/api/admin/limpiar-datos")
-async def limpiar_datos():
-    """Limpiar TODOS los datos de precios, mercados, productos e importaciones para re-importar limpio"""
-    from src.database import pool
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM precios")
-        await conn.execute("DELETE FROM importaciones")
-        await conn.execute("DELETE FROM productos")
-        await conn.execute("DELETE FROM mercados")
-    return {"status": "ok", "mensaje": "Todos los datos eliminados. Listo para re-importar."}
-
 
 if __name__ == "__main__":
     import uvicorn
