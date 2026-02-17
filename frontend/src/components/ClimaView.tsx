@@ -23,6 +23,9 @@ const PERIODOS = [
   { dias: 90, label: '90d' },
   { dias: 180, label: '6m' },
   { dias: 365, label: '1 año' },
+  { dias: 730, label: '2 años' },
+  { dias: 1095, label: '3 años' },
+  { dias: 9999, label: 'Todo' },
 ];
 
 const ALERTA_STYLE: Record<string, { emoji: string; label: string; cls: string }> = {

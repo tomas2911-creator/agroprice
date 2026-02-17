@@ -232,7 +232,7 @@ async def clima_serie(zona_id: int, dias: int = Query(90, ge=7, le=365)):
 async def clima_precio(
     producto: str,
     mercado: Optional[str] = None,
-    dias: int = Query(90, ge=7, le=365),
+    dias: int = Query(90, ge=7, le=9999),
     variables: Optional[str] = "temp_max"
 ):
     """Serie combinada precio × clima de un producto (variables separadas por coma)"""
@@ -247,7 +247,7 @@ async def clima_alertas():
 
 
 @app.get("/api/clima/correlacion")
-async def clima_correlacion(producto: str, dias: int = Query(180, ge=30, le=730)):
+async def clima_correlacion(producto: str, dias: int = Query(180, ge=30, le=9999)):
     """Correlación clima × precio para un producto"""
     return await get_clima_correlacion(producto, dias)
 
