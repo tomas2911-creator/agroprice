@@ -74,7 +74,7 @@ export default function Filters({ onFilterChange, showDias = false }: FiltersPro
       </button>
 
       {showPanel && (
-        <div className="absolute top-12 left-0 z-30 w-[480px] bg-white rounded-xl shadow-xl border border-gray-200 p-5">
+        <div className="absolute top-12 right-0 z-30 w-[480px] max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-gray-900">Filtros</h3>
             <div className="flex gap-2">
