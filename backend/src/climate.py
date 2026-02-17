@@ -233,19 +233,22 @@ async def get_clima_serie(zona_id: int, dias: int = 90) -> list[dict]:
 
 
 async def get_clima_precio_serie(producto: str, mercado: str = None,
-                                  dias: int = 90, variable: str = "temp_max") -> dict:
-    """Serie combinada: precio diario de un producto + variable climática de su zona.
-    Retorna datos alineados por fecha para gráfico dual."""
+                                  dias: int = 90, variables: list[str] = None) -> dict:
+    """Serie combinada: precio diario de un producto + variables climáticas de su zona.
+    Soporta múltiples variables simultáneamente."""
 
     variables_validas = ["temp_max", "temp_min", "precipitacion", "humedad",
                          "radiacion_solar", "viento_max"]
-    if variable not in variables_validas:
-        variable = "temp_max"
+    if not variables:
+        variables = ["temp_max"]
+    variables = [v for v in variables if v in variables_validas]
+    if not variables:
+        variables = ["temp_max"]
 
     # Obtener zona(s) del producto (la de mayor peso para el mes actual)
     mes_actual = date.today().month
     async with pool.acquire() as conn:
-        zona_row = await conn.fetchrow(f"""
+        zona_row = await conn.fetchrow("""
             SELECT z.id, z.nombre, pz.lag_dias, pz.peso
             FROM producto_zona pz
             JOIN zonas_produccion z ON z.id = pz.zona_id
@@ -259,7 +262,7 @@ async def get_clima_precio_serie(producto: str, mercado: str = None,
         """, producto, mes_actual)
 
         if not zona_row:
-            return {"producto": producto, "zona": None, "series": [], "variable": variable}
+            return {"producto": producto, "zona": None, "series": [], "variables": variables}
 
         zona_id = zona_row["id"]
         zona_nombre = zona_row["nombre"]
@@ -285,10 +288,11 @@ async def get_clima_precio_serie(producto: str, mercado: str = None,
             ORDER BY p.fecha
         """, *params)
 
-        # Serie de clima (con lag aplicado)
+        # Serie de clima (todas las variables seleccionadas, con lag aplicado)
+        cols = ", ".join(variables)
         clima = await conn.fetch(f"""
             SELECT fecha + $3 * INTERVAL '1 day' as fecha_efecto,
-                   {variable} as valor_clima
+                   {cols}
             FROM clima_diario
             WHERE zona_id = $1
             AND fecha >= CURRENT_DATE - ($2 + $3) * INTERVAL '1 day'
@@ -297,23 +301,32 @@ async def get_clima_precio_serie(producto: str, mercado: str = None,
 
     # Crear mapas por fecha
     precio_map = {str(r["fecha"]): float(r["precio"]) for r in precios}
-    clima_map = {str(r["fecha_efecto"].date()) if hasattr(r["fecha_efecto"], 'date') else str(r["fecha_efecto"]): float(r["valor_clima"]) if r["valor_clima"] is not None else None for r in clima}
+
+    clima_maps: dict[str, dict] = {v: {} for v in variables}
+    for r in clima:
+        f_str = str(r["fecha_efecto"].date()) if hasattr(r["fecha_efecto"], 'date') else str(r["fecha_efecto"])
+        for v in variables:
+            val = r[v]
+            clima_maps[v][f_str] = float(val) if val is not None else None
 
     # Combinar en serie alineada
-    todas_fechas = sorted(set(list(precio_map.keys()) + list(clima_map.keys())))
+    all_fecha_sets = [set(precio_map.keys())]
+    for v in variables:
+        all_fecha_sets.append(set(clima_maps[v].keys()))
+    todas_fechas = sorted(set().union(*all_fecha_sets))
+
     series = []
     for f in todas_fechas:
-        series.append({
-            "fecha": f,
-            "precio": precio_map.get(f),
-            "clima": clima_map.get(f),
-        })
+        punto: dict = {"fecha": f, "precio": precio_map.get(f)}
+        for v in variables:
+            punto[v] = clima_maps[v].get(f)
+        series.append(punto)
 
     return {
         "producto": producto,
         "zona": zona_nombre,
         "zona_id": zona_id,
-        "variable": variable,
+        "variables": variables,
         "lag_dias": lag,
         "series": series,
     }

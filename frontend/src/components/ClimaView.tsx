@@ -55,7 +55,7 @@ export default function ClimaView() {
   const [mercados, setMercados] = useState<any[]>([]);
   const [selectedProducto, setSelectedProducto] = useState('');
   const [selectedMercado, setSelectedMercado] = useState('');
-  const [selectedVariable, setSelectedVariable] = useState('temp_max');
+  const [selectedVariables, setSelectedVariables] = useState<Set<string>>(new Set(['temp_max']));
   const [dias, setDias] = useState(90);
   const [searchProd, setSearchProd] = useState('');
 
@@ -82,7 +82,7 @@ export default function ClimaView() {
       producto: selectedProducto,
       mercado: selectedMercado || undefined,
       dias,
-      variable: selectedVariable,
+      variables: Array.from(selectedVariables),
     })
       .then(setChartData)
       .catch((err) => { console.error(err); setChartData(null); })
@@ -108,7 +108,19 @@ export default function ClimaView() {
     !searchProd || p.nombre.toLowerCase().includes(searchProd.toLowerCase())
   );
 
-  const selVar = VARIABLES.find((v) => v.key === selectedVariable) || VARIABLES[0];
+  const toggleVariable = (key: string) => {
+    setSelectedVariables((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        if (next.size > 1) next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const activeVars = VARIABLES.filter((v) => selectedVariables.has(v.key));
 
   return (
     <div className="space-y-6">
@@ -206,19 +218,22 @@ export default function ClimaView() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Variable Climática</label>
-              <div className="grid grid-cols-2 gap-1 mt-1">
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Variables Climáticas</label>
+              <p className="text-[10px] text-gray-400 mb-1">Puedes seleccionar varias</p>
+              <div className="grid grid-cols-2 gap-1">
                 {VARIABLES.map((v) => {
                   const Icon = v.icon;
+                  const isActive = selectedVariables.has(v.key);
                   return (
                     <button
                       key={v.key}
-                      onClick={() => setSelectedVariable(v.key)}
+                      onClick={() => toggleVariable(v.key)}
                       className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs border transition-colors ${
-                        selectedVariable === v.key
-                          ? 'bg-agro-50 border-agro-300 text-agro-700 font-medium'
+                        isActive
+                          ? 'border-agro-300 font-medium'
                           : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                       }`}
+                      style={isActive ? { backgroundColor: v.color + '18', color: v.color, borderColor: v.color + '60' } : undefined}
                     >
                       <Icon className="w-3 h-3" />
                       {v.label.split(' ')[0]}
@@ -290,7 +305,7 @@ export default function ClimaView() {
       {!loading && hasSearched && chartData && chartData.series?.length > 0 && (
         <div className="bg-white rounded-xl p-5 border border-gray-200">
           <h3 className="text-base font-semibold text-gray-900 mb-1">
-            {chartData.producto} — {selVar.label} vs Precio
+            {chartData.producto} — {activeVars.map((v) => v.label).join(', ')} vs Precio
           </h3>
           <p className="text-xs text-gray-500 mb-4">
             Zona: {chartData.zona || 'N/A'} · Lag: {chartData.lag_dias || 0} días · {chartData.series.length} puntos
@@ -314,8 +329,7 @@ export default function ClimaView() {
               <YAxis
                 yAxisId="clima"
                 orientation="right"
-                tick={{ fill: selVar.color, fontSize: 11 }}
-                label={{ value: `${selVar.label} (${selVar.unit})`, angle: 90, position: 'insideRight', fill: selVar.color, fontSize: 11 }}
+                tick={{ fill: '#6b7280', fontSize: 11 }}
               />
               <Tooltip
                 contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 4px 12px rgb(0 0 0 / 0.1)' }}
@@ -323,7 +337,8 @@ export default function ClimaView() {
                 formatter={(value: any, name: string) => {
                   if (value == null) return ['—', name];
                   if (name === 'Precio') return [`$${Number(value).toLocaleString('es-CL')}`, name];
-                  return [`${Number(value).toFixed(1)} ${selVar.unit}`, name];
+                  const vInfo = VARIABLES.find((v) => v.label === name);
+                  return [`${Number(value).toFixed(1)} ${vInfo?.unit || ''}`, name];
                 }}
               />
               <Legend />
@@ -337,26 +352,30 @@ export default function ClimaView() {
                 dot={false}
                 connectNulls
               />
-              {selectedVariable === 'precipitacion' ? (
-                <Bar
-                  yAxisId="clima"
-                  dataKey="clima"
-                  name={selVar.label}
-                  fill={selVar.color}
-                  opacity={0.4}
-                />
-              ) : (
-                <Line
-                  yAxisId="clima"
-                  type="monotone"
-                  dataKey="clima"
-                  name={selVar.label}
-                  stroke={selVar.color}
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={false}
-                  connectNulls
-                />
+              {activeVars.map((v) =>
+                v.key === 'precipitacion' ? (
+                  <Bar
+                    key={v.key}
+                    yAxisId="clima"
+                    dataKey={v.key}
+                    name={v.label}
+                    fill={v.color}
+                    opacity={0.4}
+                  />
+                ) : (
+                  <Line
+                    key={v.key}
+                    yAxisId="clima"
+                    type="monotone"
+                    dataKey={v.key}
+                    name={v.label}
+                    stroke={v.color}
+                    strokeWidth={2}
+                    strokeDasharray={activeVars.length > 1 ? '5 5' : undefined}
+                    dot={false}
+                    connectNulls
+                  />
+                )
               )}
             </ComposedChart>
           </ResponsiveContainer>

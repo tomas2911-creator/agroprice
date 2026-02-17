@@ -232,10 +232,11 @@ async def clima_precio(
     producto: str,
     mercado: Optional[str] = None,
     dias: int = Query(90, ge=7, le=365),
-    variable: str = "temp_max"
+    variables: Optional[str] = "temp_max"
 ):
-    """Serie combinada precio × clima de un producto"""
-    return await get_clima_precio_serie(producto, mercado, dias, variable)
+    """Serie combinada precio × clima de un producto (variables separadas por coma)"""
+    var_list = [v.strip() for v in variables.split(",")] if variables else ["temp_max"]
+    return await get_clima_precio_serie(producto, mercado, dias, var_list)
 
 
 @app.get("/api/clima/alertas")

@@ -145,13 +145,13 @@ export const getClimaSerie = (zonaId: number, dias?: number) => {
   return fetchJSON(`/api/clima/serie?${sp.toString()}`);
 };
 export const getClimaPrecio = (params: {
-  producto: string; mercado?: string; dias?: number; variable?: string;
+  producto: string; mercado?: string; dias?: number; variables?: string[];
 }) => {
   const sp = new URLSearchParams();
   sp.set('producto', params.producto);
   if (params.mercado) sp.set('mercado', params.mercado);
   if (params.dias) sp.set('dias', String(params.dias));
-  if (params.variable) sp.set('variable', params.variable);
+  if (params.variables?.length) sp.set('variables', params.variables.join(','));
   return fetchJSON(`/api/clima/precio?${sp.toString()}`);
 };
 export const getClimaAlertas = () => fetchJSON('/api/clima/alertas');
