@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import ResumenView from './components/ResumenView';
 import PreciosView from './components/PreciosView';
@@ -13,7 +13,7 @@ import CanastaView from './components/CanastaView';
 import ExportarView from './components/ExportarView';
 import ImportarView from './components/ImportarView';
 
-const views: Record<string, () => JSX.Element> = {
+const views: Record<string, React.FC> = {
   'resumen': ResumenView,
   'precios': PreciosView,
   'variaciones': VariacionesView,
