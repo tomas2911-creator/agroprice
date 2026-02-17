@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import {
   LayoutDashboard, TrendingUp, BarChart3, Map, Activity,
-  Flame, CalendarDays, GitCompare, ShoppingBasket,
-  Download, Database, Menu, X, Leaf
+  Flame, CalendarDays, GitCompare, Grid3X3,
+  Download, Menu, X, Leaf
 } from 'lucide-react';
 
 const navItems = [
@@ -14,7 +14,7 @@ const navItems = [
   { id: 'volatilidad', label: 'Volatilidad', icon: Flame },
   { id: 'estacionalidad', label: 'Estacionalidad', icon: CalendarDays },
   { id: 'correlaciones', label: 'Correlaciones', icon: GitCompare },
-  { id: 'heatmap', label: 'Heatmap', icon: BarChart3 },
+  { id: 'heatmap', label: 'Heatmap', icon: Grid3X3 },
   { id: 'exportar', label: 'Exportar CSV', icon: Download },
 ];
 

@@ -18,7 +18,7 @@ export default function ResumenView() {
     <div className="text-center py-20 text-gray-500">
       <Package size={48} className="mx-auto mb-4 opacity-50" />
       <p className="text-lg">No hay datos disponibles</p>
-      <p className="text-sm mt-1">Importa boletines desde la sección "Importación"</p>
+      <p className="text-sm mt-1">Aún no hay boletines importados</p>
     </div>
   );
 

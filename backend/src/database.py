@@ -1,4 +1,5 @@
 import asyncpg
+import json
 import logging
 from datetime import date, datetime
 from typing import Optional
@@ -82,6 +83,7 @@ async def init_db():
             CREATE INDEX IF NOT EXISTS idx_precios_producto ON precios(producto_id);
             CREATE INDEX IF NOT EXISTS idx_precios_fecha_mercado ON precios(fecha, mercado_id);
             CREATE INDEX IF NOT EXISTS idx_precios_fecha_producto ON precios(fecha, producto_id);
+            CREATE INDEX IF NOT EXISTS idx_precios_producto_formato ON precios(producto_id, variedad, calidad, unidad);
         """)
     logger.info("Base de datos inicializada correctamente")
 
@@ -672,7 +674,6 @@ async def get_canasta(items: list[dict], fecha_inicio: date = None, fecha_fin: d
             d = dict(r)
             d["fecha"] = str(d["fecha"])
             d["total_canasta"] = float(d["total_canasta"]) if d["total_canasta"] else None
-            import json
             d["detalle"] = json.loads(d["detalle"]) if isinstance(d["detalle"], str) else d["detalle"]
             result.append(d)
         return result

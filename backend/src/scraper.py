@@ -196,7 +196,6 @@ def _parsear_hoja(ws, mercado: str, fecha: date, categoria: str = None) -> list[
         return registros
 
     categoria_actual = categoria or "hortaliza"
-    header_row_found = False
 
     for row in ws.iter_rows(values_only=True):
         valores = list(row)
@@ -215,7 +214,6 @@ def _parsear_hoja(ws, mercado: str, fecha: date, categoria: str = None) -> list[
 
         # Detectar fila de encabezado (saltar)
         if any(kw in primer_valor for kw in ["producto", "especie", "nombre", "mínimo", "máximo"]):
-            header_row_found = True
             continue
 
         # Saltar filas de metadatos

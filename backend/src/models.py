@@ -10,6 +10,7 @@ class PrecioRegistro(BaseModel):
     producto: str
     categoria: str  # "fruta" o "hortaliza"
     variedad: Optional[str] = None
+    calidad: Optional[str] = None
     unidad: Optional[str] = None
     precio_min: Optional[float] = None
     precio_max: Optional[float] = None

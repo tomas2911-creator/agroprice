@@ -14,12 +14,12 @@ from src.database import (
     init_db, close_db, get_mercados, get_productos, get_subcategorias, get_precios,
     get_variaciones, get_serie_temporal, get_spread_mercados,
     get_volatilidad, get_estacionalidad, get_correlaciones,
-    get_heatmap, get_resumen_diario, get_canasta, get_importaciones,
+    get_heatmap, get_resumen_diario, get_importaciones,
     get_fechas_disponibles
 )
 from src.scraper import importar_boletin, importar_historico
 from src.scheduler import iniciar_scheduler, detener_scheduler
-from src.models import VariacionConfig, CanastaConfig
+# Models (usados internamente por scraper/database)
 
 # Logging
 logging.basicConfig(
@@ -200,13 +200,6 @@ async def correlaciones(
 async def heatmap(fecha: Optional[date] = None):
     """Datos para heatmap de precios"""
     return await get_heatmap(fecha)
-
-
-@app.post("/api/canasta")
-async def canasta(config: CanastaConfig):
-    """Evolución de precio de una canasta personalizada"""
-    items = [{"producto": i.producto, "mercado": i.mercado} for i in config.items]
-    return await get_canasta(items, config.fecha_inicio, config.fecha_fin)
 
 
 # ============== ENDPOINTS DE IMPORTACIÓN ==============
