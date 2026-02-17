@@ -118,6 +118,7 @@ def _detectar_columnas(ws) -> dict:
     """
     Detectar las columnas del Excel buscando encabezados conocidos.
     Retorna un dict con mapping de campo -> índice de columna.
+    Busca una fila donde cada keyword esté en una CELDA SEPARADA.
     """
     patrones = {
         "producto": ["producto", "especie", "nombre"],
@@ -130,26 +131,29 @@ def _detectar_columnas(ws) -> dict:
         "precio_promedio": ["promedio", "prom", "precio prom", "p. prom", "ponderado"],
     }
 
-    mapping = {}
-
     for row in ws.iter_rows(min_row=1, max_row=15, values_only=False):
+        row_mapping = {}
+        used_columns = set()
+
         for cell in row:
             if cell.value is None:
                 continue
             texto = str(cell.value).strip().lower()
+            col_idx = cell.column - 1  # 0-indexed
 
             for campo, keywords in patrones.items():
-                if campo not in mapping:
+                if campo not in row_mapping and col_idx not in used_columns:
                     for kw in keywords:
                         if kw in texto:
-                            mapping[campo] = cell.column - 1  # 0-indexed
+                            row_mapping[campo] = col_idx
+                            used_columns.add(col_idx)
                             break
 
-        # Si encontramos al menos producto y algún precio, usamos esta fila
-        if "producto" in mapping and ("precio_promedio" in mapping or "precio_min" in mapping):
-            return mapping
+        # Si encontramos al menos producto y algún precio en esta fila, es la fila de headers
+        if "producto" in row_mapping and ("precio_promedio" in row_mapping or "precio_min" in row_mapping):
+            return row_mapping
 
-    return mapping
+    return {}
 
 
 def _extraer_nombre_mercado(ws, sheet_name: str) -> str:
