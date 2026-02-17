@@ -611,8 +611,14 @@ async def get_resumen_diario(fecha: date = None) -> dict:
 
         variaciones = await get_variaciones(dias=7)
 
-        top_subidas = [dict(v) for v in variaciones[:10] if v.get("variacion_pct") and v["variacion_pct"] > 0]
-        top_bajadas = [dict(v) for v in variaciones if v.get("variacion_pct") and v["variacion_pct"] < 0]
+        # Filtrar outliers (variaciones extremas son datos atípicos de ODEPA)
+        MAX_VAR = 300  # máx +300%
+        MIN_VAR = -75  # máx -75%
+        filtradas = [v for v in variaciones if v.get("variacion_pct") is not None
+                     and MIN_VAR <= v["variacion_pct"] <= MAX_VAR]
+
+        top_subidas = [dict(v) for v in filtradas if v["variacion_pct"] > 0][:10]
+        top_bajadas = [dict(v) for v in filtradas if v["variacion_pct"] < 0]
         top_bajadas = top_bajadas[-10:] if len(top_bajadas) > 10 else top_bajadas
         top_bajadas.reverse()
 
