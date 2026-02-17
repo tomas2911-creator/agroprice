@@ -1,0 +1,143 @@
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+async function fetchJSON(url: string, options?: RequestInit) {
+  const res = await fetch(`${API_BASE}${url}`, options);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  return res.json();
+}
+
+// Datos base
+export const getMercados = () => fetchJSON('/api/mercados');
+export const getProductos = (categoria?: string) =>
+  fetchJSON(`/api/productos${categoria ? `?categoria=${categoria}` : ''}`);
+export const getFechas = () => fetchJSON('/api/fechas');
+
+// Precios
+export const getPrecios = (params: {
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  mercados?: string[];
+  productos?: string[];
+  categorias?: string[];
+  limit?: number;
+}) => {
+  const sp = new URLSearchParams();
+  if (params.fecha_inicio) sp.set('fecha_inicio', params.fecha_inicio);
+  if (params.fecha_fin) sp.set('fecha_fin', params.fecha_fin);
+  if (params.mercados?.length) sp.set('mercados', params.mercados.join(','));
+  if (params.productos?.length) sp.set('productos', params.productos.join(','));
+  if (params.categorias?.length) sp.set('categorias', params.categorias.join(','));
+  if (params.limit) sp.set('limit', String(params.limit));
+  return fetchJSON(`/api/precios?${sp.toString()}`);
+};
+
+// Resumen diario
+export const getResumen = (fecha?: string) =>
+  fetchJSON(`/api/resumen${fecha ? `?fecha=${fecha}` : ''}`);
+
+// Variaciones
+export const getVariaciones = (params: {
+  dias?: number;
+  mercados?: string[];
+  productos?: string[];
+  categorias?: string[];
+}) => {
+  const sp = new URLSearchParams();
+  if (params.dias) sp.set('dias', String(params.dias));
+  if (params.mercados?.length) sp.set('mercados', params.mercados.join(','));
+  if (params.productos?.length) sp.set('productos', params.productos.join(','));
+  if (params.categorias?.length) sp.set('categorias', params.categorias.join(','));
+  return fetchJSON(`/api/variaciones?${sp.toString()}`);
+};
+
+// Serie temporal
+export const getSerieTemporal = (params: {
+  producto: string;
+  mercados?: string[];
+  fecha_inicio?: string;
+  fecha_fin?: string;
+}) => {
+  const sp = new URLSearchParams();
+  sp.set('producto', params.producto);
+  if (params.mercados?.length) sp.set('mercados', params.mercados.join(','));
+  if (params.fecha_inicio) sp.set('fecha_inicio', params.fecha_inicio);
+  if (params.fecha_fin) sp.set('fecha_fin', params.fecha_fin);
+  return fetchJSON(`/api/serie-temporal?${sp.toString()}`);
+};
+
+// Spread entre mercados
+export const getSpread = (fecha?: string) =>
+  fetchJSON(`/api/spread${fecha ? `?fecha=${fecha}` : ''}`);
+
+// Volatilidad
+export const getVolatilidad = (dias?: number, limit?: number) => {
+  const sp = new URLSearchParams();
+  if (dias) sp.set('dias', String(dias));
+  if (limit) sp.set('limit', String(limit));
+  return fetchJSON(`/api/volatilidad?${sp.toString()}`);
+};
+
+// Estacionalidad
+export const getEstacionalidad = (producto: string, mercado?: string) => {
+  const sp = new URLSearchParams();
+  sp.set('producto', producto);
+  if (mercado) sp.set('mercado', mercado);
+  return fetchJSON(`/api/estacionalidad?${sp.toString()}`);
+};
+
+// Correlaciones
+export const getCorrelaciones = (producto: string, mercado: string, topN?: number) => {
+  const sp = new URLSearchParams();
+  sp.set('producto', producto);
+  sp.set('mercado', mercado);
+  if (topN) sp.set('top_n', String(topN));
+  return fetchJSON(`/api/correlaciones?${sp.toString()}`);
+};
+
+// Heatmap
+export const getHeatmap = (fecha?: string) =>
+  fetchJSON(`/api/heatmap${fecha ? `?fecha=${fecha}` : ''}`);
+
+// Canasta
+export const getCanasta = (config: {
+  nombre: string;
+  items: { producto: string; mercado: string }[];
+  fecha_inicio?: string;
+  fecha_fin?: string;
+}) =>
+  fetchJSON('/api/canasta', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+
+// Importación
+export const importarFecha = (fecha: string, forzar = false) =>
+  fetchJSON(`/api/importar/fecha?fecha=${fecha}&forzar=${forzar}`, { method: 'POST' });
+
+export const importarHistorico = (fechaInicio: string, fechaFin?: string, forzar = false) => {
+  const sp = new URLSearchParams();
+  sp.set('fecha_inicio', fechaInicio);
+  if (fechaFin) sp.set('fecha_fin', fechaFin);
+  sp.set('forzar', String(forzar));
+  return fetchJSON(`/api/importar/historico?${sp.toString()}`, { method: 'POST' });
+};
+
+export const getImportaciones = () => fetchJSON('/api/importaciones');
+
+// Export CSV
+export const exportCSV = (params: {
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  mercados?: string[];
+  productos?: string[];
+  categorias?: string[];
+}) => {
+  const sp = new URLSearchParams();
+  if (params.fecha_inicio) sp.set('fecha_inicio', params.fecha_inicio);
+  if (params.fecha_fin) sp.set('fecha_fin', params.fecha_fin);
+  if (params.mercados?.length) sp.set('mercados', params.mercados.join(','));
+  if (params.productos?.length) sp.set('productos', params.productos.join(','));
+  if (params.categorias?.length) sp.set('categorias', params.categorias.join(','));
+  window.open(`${API_BASE}/api/export/csv?${sp.toString()}`, '_blank');
+};
