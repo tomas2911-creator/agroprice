@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import json
 from datetime import date, datetime
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -344,11 +343,18 @@ async def exportar_csv(
         limit=50000
     )
 
+    def esc(v):
+        """Escapar valor CSV: envolver en comillas si contiene coma o comillas"""
+        s = str(v) if v is not None else ''
+        if ',' in s or '"' in s or '\n' in s:
+            return f'"{s.replace(chr(34), chr(34)+chr(34))}"'
+        return s
+
     def generar_csv():
         yield "fecha,mercado,producto,categoria,variedad,calidad,unidad,precio_min,precio_max,precio_promedio,volumen\n"
         for d in datos:
-            yield (f"{d['fecha']},{d['mercado']},{d['producto']},{d['categoria']},"
-                   f"{d.get('variedad', '')},{d.get('calidad', '')},{d.get('unidad', '')},"
+            yield (f"{d['fecha']},{esc(d['mercado'])},{esc(d['producto'])},{d['categoria']},"
+                   f"{esc(d.get('variedad', ''))},{esc(d.get('calidad', ''))},{esc(d.get('unidad', ''))},"
                    f"{d.get('precio_min', '')},{d.get('precio_max', '')},"
                    f"{d.get('precio_promedio', '')},{d.get('volumen', '')}\n")
 

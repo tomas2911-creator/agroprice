@@ -11,7 +11,7 @@ export default function PreciosView() {
   const fetchData = useCallback((filters?: FilterState, searchTerm?: string) => {
     setLoading(true);
     const prodFilter = searchTerm
-      ? [searchTerm.charAt(0).toUpperCase() + searchTerm.slice(1).toLowerCase()]
+      ? [searchTerm]
       : filters?.productos?.length ? filters.productos : undefined;
     getPrecios({
       fecha_inicio: filters?.fechaInicio || undefined,

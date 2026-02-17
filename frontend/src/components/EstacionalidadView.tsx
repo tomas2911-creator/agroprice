@@ -12,6 +12,7 @@ export default function EstacionalidadView() {
   const [selectedMercado, setSelectedMercado] = useState('');
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [searchProd, setSearchProd] = useState('');
   const [subcats, setSubcats] = useState<{variedades: string[], calidades: string[], unidades: string[]}>({variedades: [], calidades: [], unidades: []});
   const [selVariedad, setSelVariedad] = useState('');
@@ -34,6 +35,7 @@ export default function EstacionalidadView() {
   const fetchData = () => {
     if (!selectedProducto) return;
     setLoading(true);
+    setHasSearched(true);
     getEstacionalidad({
       producto: selectedProducto,
       mercado: selectedMercado || undefined,
@@ -42,7 +44,7 @@ export default function EstacionalidadView() {
       unidad: selUnidad || undefined,
     })
       .then(setData)
-      .catch(console.error)
+      .catch((err) => { console.error(err); setData([]); })
       .finally(() => setLoading(false));
   };
 
@@ -172,6 +174,15 @@ export default function EstacionalidadView() {
                 ))}
               </LineChart>
             </ResponsiveContainer>
+          </div>
+        )}
+        {!loading && !hasSearched && (
+          <p className="text-center text-gray-400 py-8">Selecciona un producto y presiona "Ver Estacionalidad"</p>
+        )}
+        {data.length === 0 && !loading && hasSearched && (
+          <div className="text-center py-8">
+            <p className="text-gray-500 font-medium">Sin resultados para esta combinación</p>
+            <p className="text-gray-400 text-sm mt-1">Prueba quitando filtros o seleccionando otro mercado</p>
           </div>
         )}
       </div>

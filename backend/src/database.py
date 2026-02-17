@@ -1,5 +1,4 @@
 import asyncpg
-import json
 import logging
 from datetime import date, datetime
 from typing import Optional
@@ -277,8 +276,12 @@ async def get_precios(
         params.append(mercados)
         idx += 1
     if productos:
-        query += f" AND pr.nombre = ANY(${idx})"
-        params.append(productos)
+        if len(productos) == 1:
+            query += f" AND pr.nombre ILIKE ${idx}"
+            params.append(f"%{productos[0]}%")
+        else:
+            query += f" AND pr.nombre = ANY(${idx})"
+            params.append(productos)
         idx += 1
     if categorias:
         query += f" AND pr.categoria = ANY(${idx})"
@@ -696,59 +699,6 @@ async def get_resumen_diario(fecha: date = None, mercado: str = None) -> dict:
             "top_bajadas": top_bajadas,
             "precio_promedio_general": float(stats["precio_promedio_general"]) if stats["precio_promedio_general"] else None
         }
-
-
-async def get_canasta(items: list[dict], fecha_inicio: date = None, fecha_fin: date = None) -> list[dict]:
-    """Evolución de precio de una canasta personalizada"""
-    if not items:
-        return []
-
-    conditions = []
-    params = []
-    idx = 1
-
-    for item in items:
-        conditions.append(f"(pr.nombre = ${idx} AND m.nombre = ${idx + 1})")
-        params.extend([item["producto"], item["mercado"]])
-        idx += 2
-
-    where_items = " OR ".join(conditions)
-
-    query = f"""
-        SELECT p.fecha,
-               SUM(p.precio_promedio) as total_canasta,
-               COUNT(*) as items_disponibles,
-               json_agg(json_build_object(
-                   'producto', pr.nombre, 'mercado', m.nombre,
-                   'precio', p.precio_promedio
-               )) as detalle
-        FROM precios p
-        JOIN productos pr ON p.producto_id = pr.id
-        JOIN mercados m ON p.mercado_id = m.id
-        WHERE ({where_items})
-    """
-
-    if fecha_inicio:
-        query += f" AND p.fecha >= ${idx}"
-        params.append(fecha_inicio)
-        idx += 1
-    if fecha_fin:
-        query += f" AND p.fecha <= ${idx}"
-        params.append(fecha_fin)
-        idx += 1
-
-    query += " GROUP BY p.fecha ORDER BY p.fecha"
-
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(query, *params)
-        result = []
-        for r in rows:
-            d = dict(r)
-            d["fecha"] = str(d["fecha"])
-            d["total_canasta"] = float(d["total_canasta"]) if d["total_canasta"] else None
-            d["detalle"] = json.loads(d["detalle"]) if isinstance(d["detalle"], str) else d["detalle"]
-            result.append(d)
-        return result
 
 
 async def get_importaciones() -> list[dict]:
