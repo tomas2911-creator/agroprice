@@ -199,9 +199,9 @@ async def correlaciones(
 
 
 @app.get("/api/heatmap")
-async def heatmap(fecha: Optional[date] = None):
+async def heatmap(fecha: Optional[date] = None, dias: Optional[int] = None):
     """Datos para heatmap de precios"""
-    return await get_heatmap(fecha)
+    return await get_heatmap(fecha, dias=dias)
 
 
 # ============== ENDPOINTS DE IMPORTACIÓN ==============

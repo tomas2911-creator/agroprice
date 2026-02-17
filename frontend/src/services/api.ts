@@ -128,8 +128,13 @@ export const getCorrelaciones = (params: {
 };
 
 // Heatmap
-export const getHeatmap = (fecha?: string) =>
-  fetchJSON(`/api/heatmap${fecha ? `?fecha=${fecha}` : ''}`);
+export const getHeatmap = (params?: { fecha?: string; dias?: number }) => {
+  const sp = new URLSearchParams();
+  if (params?.fecha) sp.set('fecha', params.fecha);
+  if (params?.dias) sp.set('dias', String(params.dias));
+  const qs = sp.toString();
+  return fetchJSON(`/api/heatmap${qs ? `?${qs}` : ''}`);
+};
 
 // Export CSV
 export const exportCSV = (params: {

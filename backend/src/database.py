@@ -604,22 +604,41 @@ async def get_correlaciones(producto: str, mercado: str, top_n: int = 10,
         return [dict(r) for r in rows]
 
 
-async def get_heatmap(fecha: date = None) -> list[dict]:
-    """Datos para heatmap: precio promedio por producto x mercado"""
-    query = """
-        SELECT pr.nombre as producto, pr.categoria, m.nombre as mercado,
-               p.variedad, p.calidad, p.unidad, p.precio_promedio
-        FROM precios p
-        JOIN productos pr ON p.producto_id = pr.id
-        JOIN mercados m ON p.mercado_id = m.id
-        WHERE p.fecha = COALESCE($1, (SELECT MAX(fecha) FROM precios))
-        AND p.precio_promedio IS NOT NULL
-        ORDER BY pr.categoria, pr.nombre, p.unidad, m.nombre
-    """
-
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(query, fecha)
-        return [dict(r) for r in rows]
+async def get_heatmap(fecha: date = None, dias: int = None) -> list[dict]:
+    """Datos para heatmap: precio promedio por producto x mercado.
+    Si dias > 0, promedia los últimos N días en vez de solo una fecha."""
+    if dias and dias > 1:
+        query = """
+            SELECT pr.nombre as producto, pr.categoria, m.nombre as mercado,
+                   ROUND(AVG(p.precio_promedio)::numeric, 0) as precio_promedio,
+                   COUNT(*) as num_registros
+            FROM precios p
+            JOIN productos pr ON p.producto_id = pr.id
+            JOIN mercados m ON p.mercado_id = m.id
+            WHERE p.fecha >= (SELECT MAX(fecha) FROM precios) - $1 * INTERVAL '1 day'
+            AND p.precio_promedio IS NOT NULL
+            GROUP BY pr.nombre, pr.categoria, m.nombre
+            ORDER BY pr.categoria, pr.nombre, m.nombre
+        """
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query, dias)
+            return [dict(r) for r in rows]
+    else:
+        query = """
+            SELECT pr.nombre as producto, pr.categoria, m.nombre as mercado,
+                   ROUND(AVG(p.precio_promedio)::numeric, 0) as precio_promedio,
+                   COUNT(*) as num_registros
+            FROM precios p
+            JOIN productos pr ON p.producto_id = pr.id
+            JOIN mercados m ON p.mercado_id = m.id
+            WHERE p.fecha = COALESCE($1, (SELECT MAX(fecha) FROM precios))
+            AND p.precio_promedio IS NOT NULL
+            GROUP BY pr.nombre, pr.categoria, m.nombre
+            ORDER BY pr.categoria, pr.nombre, m.nombre
+        """
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query, fecha)
+            return [dict(r) for r in rows]
 
 
 async def get_resumen_diario(fecha: date = None, mercado: str = None) -> dict:
