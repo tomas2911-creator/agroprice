@@ -101,7 +101,8 @@ PRODUCTO_ZONA_MAP = [
 
 
 async def seed_zonas():
-    """Insertar zonas de producción y mapeos si no existen"""
+    """Insertar zonas de producción y mapeos si no existen.
+    Usa ILIKE para matchear productos parcialmente (ej: 'Tomate' matchea 'Tomate Larga Vida')."""
     async with pool.acquire() as conn:
         # Insertar zonas
         for z in ZONAS:
@@ -110,22 +111,26 @@ async def seed_zonas():
                 VALUES ($1, $2, $3) ON CONFLICT (nombre) DO NOTHING
             """, z["nombre"], z["latitud"], z["longitud"])
 
-        # Insertar mapeos producto → zona
+        # Insertar mapeos producto → zona (match parcial por nombre)
+        matched = 0
         for prod_nombre, zona_nombre, peso, mes_ini, mes_fin, lag in PRODUCTO_ZONA_MAP:
-            row = await conn.fetchrow("""
+            rows = await conn.fetch("""
                 SELECT p.id as pid, z.id as zid
                 FROM productos p, zonas_produccion z
-                WHERE p.nombre = $1 AND z.nombre = $2
+                WHERE (p.nombre = $1 OR p.nombre ILIKE $1 || ' %')
+                AND z.nombre = $2
             """, prod_nombre, zona_nombre)
-            if row:
+            for row in rows:
                 await conn.execute("""
                     INSERT INTO producto_zona (producto_id, zona_id, peso, mes_inicio, mes_fin, lag_dias)
                     VALUES ($1, $2, $3, $4, $5, $6)
                     ON CONFLICT (producto_id, zona_id, COALESCE(mes_inicio, 0)) DO UPDATE SET
                         peso = EXCLUDED.peso, mes_fin = EXCLUDED.mes_fin, lag_dias = EXCLUDED.lag_dias
                 """, row["pid"], row["zid"], peso, mes_ini, mes_fin, lag)
+                matched += 1
 
-    logger.info(f"Seed zonas: {len(ZONAS)} zonas, {len(PRODUCTO_ZONA_MAP)} mapeos")
+    logger.info(f"Seed zonas: {len(ZONAS)} zonas, {matched} mapeos creados de {len(PRODUCTO_ZONA_MAP)} definidos")
+    return {"zonas": len(ZONAS), "mapeos": matched}
 
 
 # ============== FETCH OPEN-METEO ==============
@@ -309,6 +314,7 @@ async def get_clima_precio_serie(producto: str, mercado: str = None,
         variables = ["temp_max"]
 
     # Obtener zona(s) del producto (la de mayor peso para el mes actual)
+    # Busca match exacto primero, si no, busca por nombre base (ej: "Tomate Larga Vida" → "Tomate")
     mes_actual = date.today().month
     async with pool.acquire() as conn:
         zona_row = await conn.fetchrow("""
@@ -316,7 +322,7 @@ async def get_clima_precio_serie(producto: str, mercado: str = None,
             FROM producto_zona pz
             JOIN zonas_produccion z ON z.id = pz.zona_id
             JOIN productos pr ON pr.id = pz.producto_id
-            WHERE pr.nombre = $1
+            WHERE (pr.nombre = $1 OR $1 ILIKE pr.nombre || ' %')
             AND (pz.mes_inicio IS NULL OR
                  (pz.mes_inicio <= pz.mes_fin AND $2 BETWEEN pz.mes_inicio AND pz.mes_fin) OR
                  (pz.mes_inicio > pz.mes_fin AND ($2 >= pz.mes_inicio OR $2 <= pz.mes_fin)))

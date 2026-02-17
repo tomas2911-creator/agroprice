@@ -237,7 +237,11 @@ async def clima_precio(
 ):
     """Serie combinada precio × clima de un producto (variables separadas por coma)"""
     var_list = [v.strip() for v in variables.split(",")] if variables else ["temp_max"]
-    return await get_clima_precio_serie(producto, mercado, dias, var_list)
+    try:
+        return await get_clima_precio_serie(producto, mercado, dias, var_list)
+    except Exception as e:
+        logger.error(f"Error clima/precio {producto}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/clima/alertas")
@@ -265,6 +269,13 @@ async def importar_clima_hist(
 ):
     """Importar historial completo de clima desde la fecha más antigua de precios"""
     return await importar_clima_historico(fecha_inicio, fecha_fin)
+
+
+@app.post("/api/clima/reseed")
+async def reseed_zonas():
+    """Re-ejecutar seed de zonas y mapeos producto→zona (usar después de importar precios)"""
+    result = await seed_zonas()
+    return result
 
 
 # ============== ENDPOINTS DE IMPORTACIÓN ==============

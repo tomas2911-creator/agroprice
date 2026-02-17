@@ -70,6 +70,7 @@ export default function ClimaView() {
   const [importing, setImporting] = useState(false);
   const [importingHist, setImportingHist] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([getProductos(), getMercados()])
@@ -82,6 +83,7 @@ export default function ClimaView() {
     if (!selectedProducto) return;
     setLoading(true);
     setHasSearched(true);
+    setError(null);
     getClimaPrecio({
       producto: selectedProducto,
       mercado: selectedMercado || undefined,
@@ -89,7 +91,7 @@ export default function ClimaView() {
       variables: Array.from(selectedVariables),
     })
       .then(setChartData)
-      .catch((err) => { console.error(err); setChartData(null); })
+      .catch((err) => { console.error(err); setChartData(null); setError(err.message || 'Error desconocido'); })
       .finally(() => setLoading(false));
 
     setLoadingCorr(true);
@@ -321,7 +323,34 @@ export default function ClimaView() {
         <div className="text-center py-12">
           <CloudRain className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500 font-medium">Selecciona un producto y presiona "Analizar"</p>
-          <p className="text-gray-400 text-sm mt-1">Si no hay datos climáticos, usa el botón "Importar Clima" primero</p>
+          <p className="text-gray-400 text-sm mt-1">Si no hay datos climáticos, usa el botón "Importar Histórico" primero</p>
+        </div>
+      )}
+
+      {!loading && hasSearched && error && (
+        <div className="bg-red-50 rounded-xl p-5 border border-red-200">
+          <h3 className="text-sm font-semibold text-red-700 flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-4 h-4" />
+            Error al cargar datos
+          </h3>
+          <p className="text-red-600 text-sm">{error}</p>
+          <p className="text-red-400 text-xs mt-2">
+            Posibles causas: datos climáticos no importados, o producto sin zona mapeada.
+            Prueba con "Importar Histórico" y luego re-intenta.
+          </p>
+        </div>
+      )}
+
+      {!loading && hasSearched && !error && chartData && !chartData.zona && (
+        <div className="bg-amber-50 rounded-xl p-5 border border-amber-200">
+          <h3 className="text-sm font-semibold text-amber-700 flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-4 h-4" />
+            Producto sin zona de producción mapeada
+          </h3>
+          <p className="text-amber-600 text-sm">
+            "{selectedProducto}" no tiene zona de producción asignada.
+            Los mapeos se crean automáticamente al iniciar el servidor.
+          </p>
         </div>
       )}
 
@@ -405,13 +434,10 @@ export default function ClimaView() {
         </div>
       )}
 
-      {!loading && hasSearched && chartData && (!chartData.series || chartData.series.length === 0) && (
+      {!loading && hasSearched && !error && chartData && chartData.zona && (!chartData.series || chartData.series.length === 0) && (
         <div className="text-center py-8 bg-white rounded-xl border border-gray-200">
-          <p className="text-gray-600 font-medium">Sin datos para esta combinación</p>
-          {!chartData.zona && (
-            <p className="text-gray-400 text-sm mt-1">Este producto no tiene zona de producción mapeada</p>
-          )}
-          <p className="text-gray-400 text-sm mt-1">Asegúrate de haber importado datos climáticos</p>
+          <p className="text-gray-600 font-medium">Sin datos climáticos para esta combinación</p>
+          <p className="text-gray-400 text-sm mt-1">Zona mapeada: {chartData.zona}. Importa datos climáticos con el botón "Importar Histórico".</p>
         </div>
       )}
 
