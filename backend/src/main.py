@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import json
 from datetime import date, datetime
@@ -201,23 +202,104 @@ async def importar_fecha(fecha: date, forzar: bool = False):
     return resultado
 
 
+# ============== BACKGROUND IMPORT TRACKING ==============
+
+_import_status = {
+    "running": False,
+    "progress": 0,
+    "total": 0,
+    "ok": 0,
+    "registros": 0,
+    "errors": 0,
+    "current_date": None,
+    "started_at": None,
+    "finished_at": None,
+}
+
+
+async def _run_background_import(fecha_inicio: date, fecha_fin: date, forzar: bool):
+    """Ejecutar importación en background con tracking"""
+    global _import_status
+    try:
+        from datetime import timedelta
+        # Generar lista de fechas hábiles
+        fechas = []
+        f = fecha_inicio
+        while f <= fecha_fin:
+            if f.weekday() < 5:
+                fechas.append(f)
+            f += timedelta(days=1)
+
+        _import_status.update({
+            "running": True, "progress": 0, "total": len(fechas),
+            "ok": 0, "registros": 0, "errors": 0,
+            "current_date": None, "started_at": datetime.now().isoformat(),
+            "finished_at": None
+        })
+
+        logger.info(f"Background import: {len(fechas)} fechas ({fecha_inicio} → {fecha_fin})")
+
+        semaforo = asyncio.Semaphore(5)
+
+        async def importar_con_tracking(fecha):
+            async with semaforo:
+                _import_status["current_date"] = str(fecha)
+                resultado = await importar_boletin(fecha, forzar=forzar)
+                _import_status["progress"] += 1
+                if resultado["estado"] == "ok":
+                    _import_status["ok"] += 1
+                    _import_status["registros"] += resultado["registros"]
+                elif resultado["estado"] not in ("ya_importado", "no_disponible"):
+                    _import_status["errors"] += 1
+                return resultado
+
+        await asyncio.gather(*[importar_con_tracking(f) for f in fechas])
+
+        _import_status["finished_at"] = datetime.now().isoformat()
+        _import_status["running"] = False
+        logger.info(f"Background import done: {_import_status['ok']} ok, {_import_status['registros']} reg")
+
+    except Exception as e:
+        logger.error(f"Background import error: {e}")
+        _import_status["running"] = False
+        _import_status["finished_at"] = datetime.now().isoformat()
+
+
 @app.post("/api/importar/historico")
 async def importar_hist(
     fecha_inicio: date,
     fecha_fin: Optional[date] = None,
-    forzar: bool = False
+    forzar: bool = False,
+    background: bool = True
 ):
-    """Importar boletines históricos en un rango de fechas"""
-    resultados = await importar_historico(fecha_inicio, fecha_fin, forzar=forzar)
+    """Importar boletines históricos. Con background=true retorna inmediatamente."""
+    if fecha_fin is None:
+        fecha_fin = date.today()
 
-    total_ok = sum(1 for r in resultados if r["estado"] == "ok")
-    total_registros = sum(r["registros"] for r in resultados)
+    if background:
+        if _import_status["running"]:
+            raise HTTPException(status_code=409, detail="Ya hay una importación en curso")
+        asyncio.create_task(_run_background_import(fecha_inicio, fecha_fin, forzar))
+        return {"status": "started", "mensaje": f"Importación iniciada en background ({fecha_inicio} → {fecha_fin})"}
+    else:
+        resultados = await importar_historico(fecha_inicio, fecha_fin, forzar=forzar)
+        total_ok = sum(1 for r in resultados if r["estado"] == "ok")
+        total_registros = sum(r["registros"] for r in resultados)
+        return {
+            "total_boletines": len(resultados),
+            "importados_ok": total_ok,
+            "total_registros": total_registros,
+            "detalle": resultados
+        }
 
+
+@app.get("/api/importar/status")
+async def import_status():
+    """Ver progreso de la importación en curso"""
+    pct = round(_import_status["progress"] / _import_status["total"] * 100, 1) if _import_status["total"] > 0 else 0
     return {
-        "total_boletines": len(resultados),
-        "importados_ok": total_ok,
-        "total_registros": total_registros,
-        "detalle": resultados
+        **_import_status,
+        "porcentaje": pct
     }
 
 

@@ -9,11 +9,15 @@ logger = logging.getLogger("agroprice.database")
 
 pool: Optional[asyncpg.Pool] = None
 
+# Cache en memoria para evitar lookups repetidos
+_cache_mercados: dict[str, int] = {}
+_cache_productos: dict[tuple[str, str], int] = {}
+
 
 async def init_db():
     """Inicializar conexión y crear tablas"""
     global pool
-    pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+    pool = await asyncpg.create_pool(DATABASE_URL, min_size=3, max_size=15)
 
     async with pool.acquire() as conn:
         await conn.execute("""
@@ -90,46 +94,58 @@ async def close_db():
 
 
 async def get_or_create_mercado(conn, nombre: str) -> int:
-    """Obtener o crear mercado, retorna id"""
-    row = await conn.fetchrow("SELECT id FROM mercados WHERE nombre = $1", nombre)
-    if row:
-        return row["id"]
+    """Obtener o crear mercado, retorna id (con cache)"""
+    if nombre in _cache_mercados:
+        return _cache_mercados[nombre]
     row = await conn.fetchrow(
         "INSERT INTO mercados (nombre) VALUES ($1) ON CONFLICT (nombre) DO UPDATE SET nombre = $1 RETURNING id",
         nombre
     )
+    _cache_mercados[nombre] = row["id"]
     return row["id"]
 
 
 async def get_or_create_producto(conn, nombre: str, categoria: str) -> int:
-    """Obtener o crear producto, retorna id"""
-    row = await conn.fetchrow(
-        "SELECT id FROM productos WHERE nombre = $1 AND categoria = $2", nombre, categoria
-    )
-    if row:
-        return row["id"]
+    """Obtener o crear producto, retorna id (con cache)"""
+    key = (nombre, categoria)
+    if key in _cache_productos:
+        return _cache_productos[key]
     row = await conn.fetchrow(
         "INSERT INTO productos (nombre, categoria) VALUES ($1, $2) "
         "ON CONFLICT (nombre, categoria) DO UPDATE SET nombre = $1 RETURNING id",
         nombre, categoria
     )
+    _cache_productos[key] = row["id"]
     return row["id"]
 
 
 async def insertar_precios(registros: list[dict]) -> int:
-    """Insertar registros de precios en batch"""
+    """Insertar registros de precios en batch optimizado"""
     if not registros:
         return 0
 
     async with pool.acquire() as conn:
-        count = 0
+        # Fase 1: Pre-resolver todos los IDs (con cache, muy rápido)
+        rows_data = []
         async with conn.transaction():
             for r in registros:
                 mercado_id = await get_or_create_mercado(conn, r["mercado"])
                 producto_id = await get_or_create_producto(conn, r["producto"], r["categoria"])
+                rows_data.append((
+                    r["fecha"], mercado_id, producto_id,
+                    r.get("variedad"), r.get("calidad"), r.get("unidad"),
+                    r.get("precio_min"), r.get("precio_max"),
+                    r.get("precio_promedio"), r.get("volumen")
+                ))
 
-                try:
-                    await conn.execute("""
+        # Fase 2: Batch insert con executemany (mucho más rápido que individual)
+        count = 0
+        BATCH_SIZE = 200
+        for i in range(0, len(rows_data), BATCH_SIZE):
+            batch = rows_data[i:i + BATCH_SIZE]
+            try:
+                async with conn.transaction():
+                    await conn.executemany("""
                         INSERT INTO precios (fecha, mercado_id, producto_id, variedad, calidad, unidad,
                                            precio_min, precio_max, precio_promedio, volumen)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -139,15 +155,28 @@ async def insertar_precios(registros: list[dict]) -> int:
                             precio_max = EXCLUDED.precio_max,
                             precio_promedio = EXCLUDED.precio_promedio,
                             volumen = EXCLUDED.volumen
-                    """,
-                        r["fecha"], mercado_id, producto_id,
-                        r.get("variedad"), r.get("calidad"), r.get("unidad"),
-                        r.get("precio_min"), r.get("precio_max"),
-                        r.get("precio_promedio"), r.get("volumen")
-                    )
-                    count += 1
-                except Exception as e:
-                    logger.error(f"Error insertando registro: {e} - {r}")
+                    """, batch)
+                    count += len(batch)
+            except Exception as e:
+                logger.error(f"Error en batch insert ({len(batch)} rows): {e}")
+                # Fallback: insertar uno por uno para no perder datos
+                async with conn.transaction():
+                    for row in batch:
+                        try:
+                            await conn.execute("""
+                                INSERT INTO precios (fecha, mercado_id, producto_id, variedad, calidad, unidad,
+                                                   precio_min, precio_max, precio_promedio, volumen)
+                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                                ON CONFLICT ON CONSTRAINT uq_precio_completo
+                                DO UPDATE SET
+                                    precio_min = EXCLUDED.precio_min,
+                                    precio_max = EXCLUDED.precio_max,
+                                    precio_promedio = EXCLUDED.precio_promedio,
+                                    volumen = EXCLUDED.volumen
+                            """, *row)
+                            count += 1
+                        except Exception as e2:
+                            logger.error(f"Error insertando registro individual: {e2}")
 
         return count
 
