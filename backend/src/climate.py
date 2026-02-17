@@ -210,6 +210,69 @@ async def importar_clima_todas_zonas(dias_atras: int = 90) -> dict:
     return {"zonas": len(zonas), "registros_total": total}
 
 
+async def importar_clima_historico(fecha_inicio: date = None, fecha_fin: date = None) -> dict:
+    """Importar historial completo de clima en chunks de 90 días.
+    Si no se especifica fecha_inicio, usa la fecha más antigua de precios en BD."""
+
+    if fecha_fin is None:
+        fecha_fin = date.today() - timedelta(days=2)
+
+    async with pool.acquire() as conn:
+        zonas = await conn.fetch("SELECT id, nombre, latitud, longitud FROM zonas_produccion")
+
+        if fecha_inicio is None:
+            row = await conn.fetchrow("SELECT MIN(fecha) as min_fecha FROM precios")
+            if row and row["min_fecha"]:
+                fecha_inicio = row["min_fecha"]
+            else:
+                fecha_inicio = date(2023, 1, 1)
+
+    if not zonas:
+        return {"error": "No hay zonas. Ejecutar seed_zonas primero.", "registros_total": 0}
+
+    logger.info(f"Importación histórica clima: {fecha_inicio} → {fecha_fin} ({len(zonas)} zonas)")
+
+    CHUNK_DAYS = 90
+    total = 0
+    chunks_ok = 0
+    chunks_error = 0
+
+    for z in zonas:
+        chunk_start = fecha_inicio
+        while chunk_start < fecha_fin:
+            chunk_end = min(chunk_start + timedelta(days=CHUNK_DAYS - 1), fecha_fin)
+            try:
+                n = await fetch_clima_openmeteo(
+                    z["id"], z["latitud"], z["longitud"], chunk_start, chunk_end
+                )
+                total += n
+                chunks_ok += 1
+            except Exception as e:
+                logger.error(f"Error clima {z['nombre']} ({chunk_start}→{chunk_end}): {e}")
+                chunks_error += 1
+            chunk_start = chunk_end + timedelta(days=1)
+
+    logger.info(f"Histórico clima: {total} registros, {chunks_ok} chunks OK, {chunks_error} errores")
+    return {
+        "zonas": len(zonas),
+        "fecha_inicio": str(fecha_inicio),
+        "fecha_fin": str(fecha_fin),
+        "registros_total": total,
+        "chunks_ok": chunks_ok,
+        "chunks_error": chunks_error,
+    }
+
+
+async def importar_clima_diario():
+    """Tarea diaria: importar los últimos 5 días de clima (overlap para llenar gaps)"""
+    try:
+        result = await importar_clima_todas_zonas(dias_atras=5)
+        logger.info(f"Clima diario: {result['registros_total']} registros actualizados")
+        return result
+    except Exception as e:
+        logger.error(f"Error en importación diaria de clima: {e}")
+
+
 # ============== QUERIES ==============
 
 async def get_zonas() -> list[dict]:

@@ -3,6 +3,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from src.scraper import importar_hoy
+from src.climate import importar_clima_diario
 
 logger = logging.getLogger("agroprice.scheduler")
 
@@ -30,8 +31,17 @@ def iniciar_scheduler():
         replace_existing=True,
     )
 
+    # Importar clima diario a las 15:00 (después del boletín ODEPA)
+    scheduler.add_job(
+        _tarea_clima,
+        CronTrigger(day_of_week="mon-fri", hour=15, minute=0, timezone="America/Santiago"),
+        id="importar_clima_diario",
+        name="Importar clima diario Open-Meteo",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Scheduler iniciado: importación diaria a las 14:00 y reintento a las 17:00 (hora Chile)")
+    logger.info("Scheduler iniciado: ODEPA 14:00, clima 15:00, reintento 17:00 (hora Chile)")
 
 
 async def _tarea_diaria():
@@ -53,6 +63,15 @@ async def _tarea_reintento():
             logger.info(f"Reintento importación: {resultado}")
     except Exception as e:
         logger.error(f"Error en reintento: {e}")
+
+
+async def _tarea_clima():
+    """Tarea programada: importar clima de los últimos días"""
+    try:
+        resultado = await importar_clima_diario()
+        logger.info(f"Clima diario: {resultado}")
+    except Exception as e:
+        logger.error(f"Error en importación clima diario: {e}")
 
 
 def detener_scheduler():

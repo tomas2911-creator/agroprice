@@ -163,6 +163,8 @@ export const getClimaCorrelacion = (producto: string, dias?: number) => {
 };
 export const importarClima = (dias?: number) =>
   fetchJSON(`/api/clima/importar${dias ? `?dias=${dias}` : ''}`, { method: 'POST' });
+export const importarClimaHistorico = () =>
+  fetchJSON('/api/clima/importar-historico', { method: 'POST' });
 
 // Export CSV
 export const exportCSV = (params: {

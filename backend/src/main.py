@@ -19,7 +19,8 @@ from src.database import (
 from src.scraper import importar_boletin, importar_historico
 from src.scheduler import iniciar_scheduler, detener_scheduler
 from src.climate import (
-    seed_zonas, importar_clima_todas_zonas,
+    seed_zonas, importar_clima_todas_zonas, importar_clima_historico,
+    importar_clima_diario,
     get_zonas, get_clima_serie, get_clima_precio_serie,
     get_alertas_clima, get_clima_correlacion
 )
@@ -255,6 +256,15 @@ async def clima_correlacion(producto: str, dias: int = Query(180, ge=30, le=730)
 async def importar_clima(dias: int = Query(90, ge=7, le=730)):
     """Importar datos climáticos de Open-Meteo para todas las zonas"""
     return await importar_clima_todas_zonas(dias)
+
+
+@app.post("/api/clima/importar-historico")
+async def importar_clima_hist(
+    fecha_inicio: Optional[date] = None,
+    fecha_fin: Optional[date] = None
+):
+    """Importar historial completo de clima desde la fecha más antigua de precios"""
+    return await importar_clima_historico(fecha_inicio, fecha_fin)
 
 
 # ============== ENDPOINTS DE IMPORTACIÓN ==============

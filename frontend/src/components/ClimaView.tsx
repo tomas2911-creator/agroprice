@@ -6,7 +6,7 @@ import {
 import { CloudRain, Thermometer, Sun, Wind, AlertTriangle, Search, RefreshCw } from 'lucide-react';
 import {
   getMercados, getProductos, getClimaPrecio, getClimaAlertas,
-  getClimaCorrelacion, importarClima
+  getClimaCorrelacion, importarClima, importarClimaHistorico
 } from '../services/api';
 
 const VARIABLES = [
@@ -65,6 +65,7 @@ export default function ClimaView() {
   const [loading, setLoading] = useState(false);
   const [loadingCorr, setLoadingCorr] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importingHist, setImportingHist] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
   useEffect(() => {
@@ -104,6 +105,15 @@ export default function ClimaView() {
       .finally(() => setImporting(false));
   };
 
+  const handleImportHistorico = () => {
+    if (!confirm('¿Importar TODO el historial de clima desde la primera fecha de precios? Esto puede tomar varios minutos.')) return;
+    setImportingHist(true);
+    importarClimaHistorico()
+      .then((r: any) => alert(`Histórico completo: ${r.registros_total} registros (${r.fecha_inicio} → ${r.fecha_fin}), ${r.chunks_ok} chunks OK, ${r.chunks_error} errores`))
+      .catch((e: any) => alert(`Error: ${e.message}`))
+      .finally(() => setImportingHist(false));
+  };
+
   const filteredProductos = productos.filter((p: any) =>
     !searchProd || p.nombre.toLowerCase().includes(searchProd.toLowerCase())
   );
@@ -135,14 +145,24 @@ export default function ClimaView() {
             Correlación entre variables climáticas de zonas de producción y precios de mercado
           </p>
         </div>
-        <button
-          onClick={handleImport}
-          disabled={importing}
-          className="flex items-center gap-2 px-4 py-2 bg-cyan-50 text-cyan-700 rounded-lg hover:bg-cyan-100 border border-cyan-200 disabled:opacity-50 text-sm font-medium"
-        >
-          <RefreshCw className={`w-4 h-4 ${importing ? 'animate-spin' : ''}`} />
-          {importing ? 'Importando…' : 'Importar Clima'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleImportHistorico}
+            disabled={importingHist || importing}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 border border-amber-200 disabled:opacity-50 text-sm font-medium"
+          >
+            <RefreshCw className={`w-4 h-4 ${importingHist ? 'animate-spin' : ''}`} />
+            {importingHist ? 'Importando histórico…' : 'Importar Histórico'}
+          </button>
+          <button
+            onClick={handleImport}
+            disabled={importing || importingHist}
+            className="flex items-center gap-2 px-4 py-2 bg-cyan-50 text-cyan-700 rounded-lg hover:bg-cyan-100 border border-cyan-200 disabled:opacity-50 text-sm font-medium"
+          >
+            <RefreshCw className={`w-4 h-4 ${importing ? 'animate-spin' : ''}`} />
+            {importing ? 'Importando…' : 'Últimos 90d'}
+          </button>
+        </div>
       </div>
 
       {/* Alertas climáticas recientes */}
