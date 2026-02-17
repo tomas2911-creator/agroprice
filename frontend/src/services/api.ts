@@ -34,8 +34,13 @@ export const getPrecios = (params: {
 };
 
 // Resumen diario
-export const getResumen = (fecha?: string) =>
-  fetchJSON(`/api/resumen${fecha ? `?fecha=${fecha}` : ''}`);
+export const getResumen = (params?: { fecha?: string; mercado?: string }) => {
+  const sp = new URLSearchParams();
+  if (params?.fecha) sp.set('fecha', params.fecha);
+  if (params?.mercado) sp.set('mercado', params.mercado);
+  const qs = sp.toString();
+  return fetchJSON(`/api/resumen${qs ? `?${qs}` : ''}`);
+};
 
 // Variaciones
 export const getVariaciones = (params: {

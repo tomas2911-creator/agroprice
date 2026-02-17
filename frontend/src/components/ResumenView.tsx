@@ -1,17 +1,31 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Package, MapPin, DollarSign } from 'lucide-react';
-import { getResumen } from '../services/api';
+import { getResumen, getMercados } from '../services/api';
 
 export default function ResumenView() {
   const [resumen, setResumen] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [mercados, setMercados] = useState<any[]>([]);
+  const [selectedMercado, setSelectedMercado] = useState('');
 
   useEffect(() => {
-    getResumen()
+    getMercados().then(setMercados).catch(console.error);
+  }, []);
+
+  const fetchResumen = (mercado?: string) => {
+    setLoading(true);
+    getResumen({ mercado: mercado || undefined })
       .then(setResumen)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { fetchResumen(); }, []);
+
+  const handleMercadoChange = (mercado: string) => {
+    setSelectedMercado(mercado);
+    fetchResumen(mercado || undefined);
+  };
 
   if (loading) return <LoadingSkeleton />;
   if (!resumen || !resumen.fecha) return (
@@ -24,9 +38,24 @@ export default function ResumenView() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Resumen del día</h2>
-        <p className="text-gray-500 text-sm mt-1">Boletín del {resumen.fecha}</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Resumen del día</h2>
+          <p className="text-gray-500 text-sm mt-1">
+            Boletín del {resumen.fecha}
+            {resumen.mercado_filtro && <span className="text-agro-600 font-medium"> — {resumen.mercado_filtro}</span>}
+          </p>
+        </div>
+        <select
+          value={selectedMercado}
+          onChange={(e) => handleMercadoChange(e.target.value)}
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white min-w-[220px]"
+        >
+          <option value="">Todos los mercados</option>
+          {mercados.map((m) => (
+            <option key={m.id} value={m.nombre}>{m.nombre}</option>
+          ))}
+        </select>
       </div>
 
       {/* KPIs */}

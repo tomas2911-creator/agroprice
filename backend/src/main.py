@@ -113,9 +113,9 @@ async def consultar_precios(
 
 
 @app.get("/api/resumen")
-async def resumen_diario(fecha: Optional[date] = None):
-    """Resumen del día con top subidas y bajadas"""
-    return await get_resumen_diario(fecha)
+async def resumen_diario(fecha: Optional[date] = None, mercado: Optional[str] = None):
+    """Resumen del día con top subidas y bajadas, opcionalmente filtrado por mercado"""
+    return await get_resumen_diario(fecha, mercado=mercado)
 
 
 # ============== ENDPOINTS DE ANÁLISIS ==============

@@ -324,12 +324,30 @@ async def get_variaciones(dias: int = 7, mercados: list[str] = None,
             FROM precios p, fecha_actual fa
             WHERE p.fecha = fa.fecha
         ),
+        -- Promedio de últimos 5 registros para detectar anomalías
+        precio_referencia AS (
+            SELECT producto_id, mercado_id,
+                   COALESCE(variedad,'') as var_key, COALESCE(calidad,'') as cal_key, COALESCE(unidad,'') as uni_key,
+                   AVG(precio_promedio) as precio_ref
+            FROM (
+                SELECT p.producto_id, p.mercado_id, p.variedad, p.calidad, p.unidad, p.precio_promedio,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY p.producto_id, p.mercado_id, COALESCE(p.variedad,''), COALESCE(p.calidad,''), COALESCE(p.unidad,'')
+                           ORDER BY p.fecha DESC
+                       ) as rn
+                FROM precios p, fecha_actual fa
+                WHERE p.fecha < fa.fecha AND p.precio_promedio IS NOT NULL
+            ) ranked
+            WHERE rn <= 5
+            GROUP BY producto_id, mercado_id, var_key, cal_key, uni_key
+        ),
         precios_anterior AS (
             SELECT DISTINCT ON (p.producto_id, p.mercado_id, COALESCE(p.variedad,''), COALESCE(p.calidad,''), COALESCE(p.unidad,''))
                 p.producto_id, p.mercado_id, p.variedad, p.calidad, p.unidad,
                 p.precio_promedio, p.volumen, p.fecha
             FROM precios p, fecha_actual fa
             WHERE p.fecha <= fa.fecha - $1 * INTERVAL '1 day'
+              AND p.precio_promedio IS NOT NULL
             ORDER BY p.producto_id, p.mercado_id, COALESCE(p.variedad,''), COALESCE(p.calidad,''), COALESCE(p.unidad,''), p.fecha DESC
         )
         SELECT
@@ -354,7 +372,16 @@ async def get_variaciones(dias: int = 7, mercados: list[str] = None,
             AND COALESCE(ph.unidad,'') = COALESCE(pa.unidad,'')
         JOIN productos pr ON ph.producto_id = pr.id
         JOIN mercados m ON ph.mercado_id = m.id
+        -- Filtrar anomalías: excluir si precio anterior se desvía >80% del promedio referencia
+        LEFT JOIN precio_referencia ref ON pa.producto_id = ref.producto_id AND pa.mercado_id = ref.mercado_id
+            AND COALESCE(pa.variedad,'') = ref.var_key
+            AND COALESCE(pa.calidad,'') = ref.cal_key
+            AND COALESCE(pa.unidad,'') = ref.uni_key
         WHERE 1=1 {filtros_mercado} {filtros_producto}
+          AND (ref.precio_ref IS NULL OR (
+              pa.precio_promedio BETWEEN ref.precio_ref * 0.2 AND ref.precio_ref * 5
+              AND ph.precio_promedio BETWEEN ref.precio_ref * 0.2 AND ref.precio_ref * 5
+          ))
         ORDER BY variacion_pct DESC NULLS LAST
     """
 
@@ -588,8 +615,8 @@ async def get_heatmap(fecha: date = None) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-async def get_resumen_diario(fecha: date = None) -> dict:
-    """Resumen del día: totales + top subidas/bajadas"""
+async def get_resumen_diario(fecha: date = None, mercado: str = None) -> dict:
+    """Resumen del día: totales + top subidas/bajadas, opcionalmente filtrado por mercado"""
     async with pool.acquire() as conn:
         if not fecha:
             row = await conn.fetchrow("SELECT MAX(fecha) as fecha FROM precios")
@@ -599,17 +626,29 @@ async def get_resumen_diario(fecha: date = None) -> dict:
             return {"fecha": None, "total_productos": 0, "total_mercados": 0,
                     "top_subidas": [], "top_bajadas": [], "precio_promedio_general": None}
 
-        stats = await conn.fetchrow("""
-            SELECT COUNT(DISTINCT pr.nombre) as total_productos,
-                   COUNT(DISTINCT m.nombre) as total_mercados,
-                   ROUND(AVG(p.precio_promedio)::numeric, 2) as precio_promedio_general
-            FROM precios p
-            JOIN productos pr ON p.producto_id = pr.id
-            JOIN mercados m ON p.mercado_id = m.id
-            WHERE p.fecha = $1
-        """, fecha)
+        if mercado:
+            stats = await conn.fetchrow("""
+                SELECT COUNT(DISTINCT pr.nombre) as total_productos,
+                       1 as total_mercados,
+                       ROUND(AVG(p.precio_promedio)::numeric, 2) as precio_promedio_general
+                FROM precios p
+                JOIN productos pr ON p.producto_id = pr.id
+                JOIN mercados m ON p.mercado_id = m.id
+                WHERE p.fecha = $1 AND m.nombre = $2
+            """, fecha, mercado)
+        else:
+            stats = await conn.fetchrow("""
+                SELECT COUNT(DISTINCT pr.nombre) as total_productos,
+                       COUNT(DISTINCT m.nombre) as total_mercados,
+                       ROUND(AVG(p.precio_promedio)::numeric, 2) as precio_promedio_general
+                FROM precios p
+                JOIN productos pr ON p.producto_id = pr.id
+                JOIN mercados m ON p.mercado_id = m.id
+                WHERE p.fecha = $1
+            """, fecha)
 
-        variaciones = await get_variaciones(dias=7)
+        mercados_filter = [mercado] if mercado else None
+        variaciones = await get_variaciones(dias=7, mercados=mercados_filter)
 
         # Filtrar outliers (variaciones extremas son datos atípicos de ODEPA)
         MAX_VAR = 300  # máx +300%
@@ -624,6 +663,7 @@ async def get_resumen_diario(fecha: date = None) -> dict:
 
         return {
             "fecha": str(fecha),
+            "mercado_filtro": mercado,
             "total_productos": stats["total_productos"],
             "total_mercados": stats["total_mercados"],
             "top_subidas": top_subidas,
