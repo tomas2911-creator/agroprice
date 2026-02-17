@@ -67,6 +67,11 @@ export default function ResumenView() {
                   <div>
                     <p className="font-medium text-sm text-gray-900">{item.producto}</p>
                     <p className="text-xs text-gray-500">{item.mercado}</p>
+                    {(item.variedad || item.calidad || item.unidad) && (
+                      <p className="text-xs text-gray-400">
+                        {[item.variedad, item.calidad, item.unidad].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-green-600">+{item.variacion_pct}%</p>
@@ -94,6 +99,11 @@ export default function ResumenView() {
                   <div>
                     <p className="font-medium text-sm text-gray-900">{item.producto}</p>
                     <p className="text-xs text-gray-500">{item.mercado}</p>
+                    {(item.variedad || item.calidad || item.unidad) && (
+                      <p className="text-xs text-gray-400">
+                        {[item.variedad, item.calidad, item.unidad].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-red-600">{item.variacion_pct}%</p>

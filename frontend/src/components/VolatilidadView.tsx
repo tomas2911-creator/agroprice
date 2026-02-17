@@ -18,7 +18,10 @@ export default function VolatilidadView() {
 
   useEffect(() => { fetchData(30); }, []);
 
-  const top20 = data.slice(0, 20);
+  const top20 = data.slice(0, 20).map((d: any) => ({
+    ...d,
+    label: `${d.producto}${d.unidad ? ` (${d.unidad})` : ''}`,
+  }));
 
   return (
     <div className="space-y-4">
@@ -49,7 +52,7 @@ export default function VolatilidadView() {
             <BarChart data={top20} layout="vertical" margin={{ left: 120 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis type="number" tickFormatter={(v: number) => `${v}%`} tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="producto" tick={{ fontSize: 11 }} width={110} />
+              <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={140} />
               <Tooltip
                 formatter={(value: number, name: string) => {
                   if (name === 'coef_variacion') return [`${value}%`, 'CV'];
@@ -76,6 +79,7 @@ export default function VolatilidadView() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Producto</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Cat.</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Mercado</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Formato</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">CV %</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Precio Medio</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Desv. Est.</th>
@@ -88,7 +92,7 @@ export default function VolatilidadView() {
               {loading ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    {Array.from({ length: 10 }).map((_, j) => (
+                    {Array.from({ length: 11 }).map((_, j) => (
                       <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded" /></td>
                     ))}
                   </tr>
@@ -105,6 +109,9 @@ export default function VolatilidadView() {
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-gray-600">{d.mercado}</td>
+                    <td className="px-4 py-2.5 text-xs text-gray-500">
+                      {[d.variedad, d.calidad, d.unidad].filter(Boolean).join(' · ') || '-'}
+                    </td>
                     <td className="px-4 py-2.5 text-right font-bold text-red-600">{d.coef_variacion}%</td>
                     <td className="px-4 py-2.5 text-right">${d.precio_medio?.toLocaleString()}</td>
                     <td className="px-4 py-2.5 text-right text-gray-500">${d.desviacion?.toLocaleString()}</td>

@@ -15,16 +15,22 @@ export default function HeatmapView() {
 
   const filtered = data.filter((d) => !catFilter || d.categoria === catFilter);
 
-  // Obtener mercados y productos únicos
+  // Obtener mercados y productos únicos (con unidad para distinguir formato)
   const mercados = [...new Set(filtered.map((d) => d.mercado))].sort();
-  const productos = [...new Set(filtered.map((d) => d.producto))].sort();
+  const productosSet = new Set<string>();
+  filtered.forEach((d) => {
+    const label = d.unidad && d.unidad !== 'Sin especificar' ? `${d.producto} (${d.unidad})` : d.producto;
+    productosSet.add(label);
+  });
+  const productos = [...productosSet].sort();
 
   // Crear mapa de precios
   const precioMap: Record<string, number> = {};
   let minPrecio = Infinity;
   let maxPrecio = 0;
   filtered.forEach((d) => {
-    const key = `${d.producto}|${d.mercado}`;
+    const label = d.unidad && d.unidad !== 'Sin especificar' ? `${d.producto} (${d.unidad})` : d.producto;
+    const key = `${label}|${d.mercado}`;
     precioMap[key] = d.precio_promedio;
     if (d.precio_promedio < minPrecio) minPrecio = d.precio_promedio;
     if (d.precio_promedio > maxPrecio) maxPrecio = d.precio_promedio;
@@ -92,7 +98,7 @@ export default function HeatmapView() {
               <tbody>
                 {productos.map((prod) => (
                   <tr key={prod} className="border-t border-gray-50">
-                    <td className="px-3 py-1.5 font-medium text-gray-900 sticky left-0 bg-white z-10">
+                    <td className="px-3 py-1.5 font-medium text-gray-900 sticky left-0 bg-white z-10 whitespace-nowrap">
                       {prod}
                     </td>
                     {mercados.map((merc) => {

@@ -15,9 +15,7 @@ const navItems = [
   { id: 'estacionalidad', label: 'Estacionalidad', icon: CalendarDays },
   { id: 'correlaciones', label: 'Correlaciones', icon: GitCompare },
   { id: 'heatmap', label: 'Heatmap', icon: BarChart3 },
-  { id: 'canasta', label: 'Canasta', icon: ShoppingBasket },
   { id: 'exportar', label: 'Exportar CSV', icon: Download },
-  { id: 'importar', label: 'Importación', icon: Database },
 ];
 
 interface SidebarProps {

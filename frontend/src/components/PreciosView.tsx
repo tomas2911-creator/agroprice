@@ -59,6 +59,8 @@ export default function PreciosView() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Producto</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Cat.</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Variedad</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Calidad</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Unidad</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Mín</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Máx</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Promedio</th>
@@ -69,14 +71,14 @@ export default function PreciosView() {
               {loading ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    {Array.from({ length: 9 }).map((_, j) => (
+                    {Array.from({ length: 11 }).map((_, j) => (
                       <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded" /></td>
                     ))}
                   </tr>
                 ))
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-400">Sin resultados</td>
+                  <td colSpan={11} className="px-4 py-8 text-center text-gray-400">Sin resultados</td>
                 </tr>
               ) : (
                 filtered.map((d, i) => (
@@ -90,7 +92,9 @@ export default function PreciosView() {
                         {d.categoria}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-gray-500">{d.variedad || '-'}</td>
+                    <td className="px-4 py-2.5 text-gray-500 text-xs">{d.variedad || '-'}</td>
+                    <td className="px-4 py-2.5 text-gray-500 text-xs">{d.calidad || '-'}</td>
+                    <td className="px-4 py-2.5 text-gray-500 text-xs">{d.unidad || '-'}</td>
                     <td className="px-4 py-2.5 text-right text-gray-600">
                       {d.precio_min ? `$${d.precio_min.toLocaleString()}` : '-'}
                     </td>

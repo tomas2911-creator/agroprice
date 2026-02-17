@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { getMercados, getProductos, getEstacionalidad } from '../services/api';
+import { getMercados, getProductos, getSubcategorias, getEstacionalidad } from '../services/api';
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -13,6 +13,17 @@ export default function EstacionalidadView() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchProd, setSearchProd] = useState('');
+  const [subcats, setSubcats] = useState<{variedades: string[], calidades: string[], unidades: string[]}>({variedades: [], calidades: [], unidades: []});
+  const [selVariedad, setSelVariedad] = useState('');
+  const [selCalidad, setSelCalidad] = useState('');
+  const [selUnidad, setSelUnidad] = useState('');
+
+  const selectProducto = (nombre: string) => {
+    setSelectedProducto(nombre);
+    setSearchProd(nombre);
+    setSelVariedad(''); setSelCalidad(''); setSelUnidad('');
+    getSubcategorias(nombre).then(setSubcats).catch(console.error);
+  };
 
   useEffect(() => {
     Promise.all([getMercados(), getProductos()])
@@ -23,7 +34,13 @@ export default function EstacionalidadView() {
   const fetchData = () => {
     if (!selectedProducto) return;
     setLoading(true);
-    getEstacionalidad(selectedProducto, selectedMercado || undefined)
+    getEstacionalidad({
+      producto: selectedProducto,
+      mercado: selectedMercado || undefined,
+      variedad: selVariedad || undefined,
+      calidad: selCalidad || undefined,
+      unidad: selUnidad || undefined,
+    })
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -67,7 +84,7 @@ export default function EstacionalidadView() {
               {filteredProductos.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => { setSelectedProducto(p.nombre); setSearchProd(p.nombre); }}
+                  onClick={() => selectProducto(p.nombre)}
                   className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50
                     ${selectedProducto === p.nombre ? 'bg-agro-50 text-agro-700 font-medium' : 'text-gray-700'}`}
                 >
@@ -76,6 +93,36 @@ export default function EstacionalidadView() {
               ))}
             </div>
           </div>
+
+          {/* Sub-filtros */}
+          {selectedProducto && (subcats.variedades.length > 1 || subcats.calidades.length > 1 || subcats.unidades.length > 1) && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Filtrar por</label>
+              <div className="mt-1 space-y-1.5">
+                {subcats.variedades.length > 1 && (
+                  <select value={selVariedad} onChange={(e) => setSelVariedad(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm">
+                    <option value="">Todas las variedades</option>
+                    {subcats.variedades.map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                )}
+                {subcats.calidades.length > 1 && (
+                  <select value={selCalidad} onChange={(e) => setSelCalidad(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm">
+                    <option value="">Todas las calidades</option>
+                    {subcats.calidades.map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                )}
+                {subcats.unidades.length > 1 && (
+                  <select value={selUnidad} onChange={(e) => setSelUnidad(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm">
+                    <option value="">Todas las unidades</option>
+                    {subcats.unidades.map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Mercado */}
           <div>

@@ -226,6 +226,22 @@ async def get_productos(categoria: str = None) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+async def get_subcategorias(producto: str) -> dict:
+    """Obtener variedades, calidades y unidades disponibles para un producto"""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT DISTINCT p.variedad, p.calidad, p.unidad
+            FROM precios p
+            JOIN productos pr ON p.producto_id = pr.id
+            WHERE pr.nombre = $1
+            ORDER BY p.variedad, p.calidad, p.unidad
+        """, producto)
+        variedades = sorted(set(r["variedad"] for r in rows if r["variedad"]))
+        calidades = sorted(set(r["calidad"] for r in rows if r["calidad"]))
+        unidades = sorted(set(r["unidad"] for r in rows if r["unidad"]))
+        return {"variedades": variedades, "calidades": calidades, "unidades": unidades}
+
+
 async def get_precios(
     fecha_inicio: date = None,
     fecha_fin: date = None,
@@ -301,19 +317,22 @@ async def get_variaciones(dias: int = 7, mercados: list[str] = None,
             SELECT MAX(fecha) as fecha FROM precios
         ),
         precios_hoy AS (
-            SELECT p.producto_id, p.mercado_id, p.precio_promedio, p.volumen, p.fecha
+            SELECT p.producto_id, p.mercado_id, p.variedad, p.calidad, p.unidad,
+                   p.precio_promedio, p.volumen, p.fecha
             FROM precios p, fecha_actual fa
             WHERE p.fecha = fa.fecha
         ),
         precios_anterior AS (
-            SELECT DISTINCT ON (p.producto_id, p.mercado_id)
-                p.producto_id, p.mercado_id, p.precio_promedio, p.volumen, p.fecha
+            SELECT DISTINCT ON (p.producto_id, p.mercado_id, COALESCE(p.variedad,''), COALESCE(p.calidad,''), COALESCE(p.unidad,''))
+                p.producto_id, p.mercado_id, p.variedad, p.calidad, p.unidad,
+                p.precio_promedio, p.volumen, p.fecha
             FROM precios p, fecha_actual fa
             WHERE p.fecha <= fa.fecha - $1 * INTERVAL '1 day'
-            ORDER BY p.producto_id, p.mercado_id, p.fecha DESC
+            ORDER BY p.producto_id, p.mercado_id, COALESCE(p.variedad,''), COALESCE(p.calidad,''), COALESCE(p.unidad,''), p.fecha DESC
         )
         SELECT
             pr.nombre as producto, pr.categoria, m.nombre as mercado,
+            ph.variedad, ph.calidad, ph.unidad,
             ph.precio_promedio as precio_actual,
             pa.precio_promedio as precio_anterior,
             ph.fecha as fecha_actual,
@@ -328,6 +347,9 @@ async def get_variaciones(dias: int = 7, mercados: list[str] = None,
             ph.precio_promedio - pa.precio_promedio as variacion_abs
         FROM precios_hoy ph
         JOIN precios_anterior pa ON ph.producto_id = pa.producto_id AND ph.mercado_id = pa.mercado_id
+            AND COALESCE(ph.variedad,'') = COALESCE(pa.variedad,'')
+            AND COALESCE(ph.calidad,'') = COALESCE(pa.calidad,'')
+            AND COALESCE(ph.unidad,'') = COALESCE(pa.unidad,'')
         JOIN productos pr ON ph.producto_id = pr.id
         JOIN mercados m ON ph.mercado_id = m.id
         WHERE 1=1 {filtros_mercado} {filtros_producto}
@@ -340,10 +362,12 @@ async def get_variaciones(dias: int = 7, mercados: list[str] = None,
 
 
 async def get_serie_temporal(producto: str, mercados: list[str] = None,
-                             fecha_inicio: date = None, fecha_fin: date = None) -> list[dict]:
+                             fecha_inicio: date = None, fecha_fin: date = None,
+                             variedad: str = None, calidad: str = None, unidad: str = None) -> list[dict]:
     """Serie temporal de un producto en uno o más mercados"""
     query = """
-        SELECT p.fecha, m.nombre as mercado, p.precio_promedio, p.precio_min, p.precio_max, p.volumen
+        SELECT p.fecha, m.nombre as mercado, p.variedad, p.calidad, p.unidad,
+               p.precio_promedio, p.precio_min, p.precio_max, p.volumen
         FROM precios p
         JOIN mercados m ON p.mercado_id = m.id
         JOIN productos pr ON p.producto_id = pr.id
@@ -364,6 +388,18 @@ async def get_serie_temporal(producto: str, mercados: list[str] = None,
         query += f" AND p.fecha <= ${idx}"
         params.append(fecha_fin)
         idx += 1
+    if variedad:
+        query += f" AND p.variedad = ${idx}"
+        params.append(variedad)
+        idx += 1
+    if calidad:
+        query += f" AND p.calidad = ${idx}"
+        params.append(calidad)
+        idx += 1
+    if unidad:
+        query += f" AND p.unidad = ${idx}"
+        params.append(unidad)
+        idx += 1
 
     query += " ORDER BY p.fecha, m.nombre"
 
@@ -373,18 +409,18 @@ async def get_serie_temporal(producto: str, mercados: list[str] = None,
 
 
 async def get_spread_mercados(fecha: date = None) -> list[dict]:
-    """Spread de precios entre mercados para cada producto"""
+    """Spread de precios entre mercados para cada producto (mismo formato)"""
     query = """
         WITH datos AS (
             SELECT pr.nombre as producto, pr.categoria, m.nombre as mercado,
-                   p.precio_promedio, p.fecha
+                   p.variedad, p.calidad, p.unidad, p.precio_promedio, p.fecha
             FROM precios p
             JOIN mercados m ON p.mercado_id = m.id
             JOIN productos pr ON p.producto_id = pr.id
             WHERE p.fecha = COALESCE($1, (SELECT MAX(fecha) FROM precios))
             AND p.precio_promedio IS NOT NULL
         )
-        SELECT producto, categoria,
+        SELECT producto, categoria, variedad, calidad, unidad,
                MIN(precio_promedio) as precio_min_mercado,
                MAX(precio_promedio) as precio_max_mercado,
                MAX(precio_promedio) - MIN(precio_promedio) as spread,
@@ -392,12 +428,18 @@ async def get_spread_mercados(fecha: date = None) -> list[dict]:
                     THEN ROUND(((MAX(precio_promedio) - MIN(precio_promedio)) / MIN(precio_promedio) * 100)::numeric, 2)
                     ELSE NULL END as spread_pct,
                (SELECT mercado FROM datos d2 WHERE d2.producto = datos.producto
+                AND COALESCE(d2.variedad,'') = COALESCE(datos.variedad,'')
+                AND COALESCE(d2.calidad,'') = COALESCE(datos.calidad,'')
+                AND COALESCE(d2.unidad,'') = COALESCE(datos.unidad,'')
                 AND d2.precio_promedio = MIN(datos.precio_promedio) LIMIT 1) as mercado_barato,
                (SELECT mercado FROM datos d3 WHERE d3.producto = datos.producto
+                AND COALESCE(d3.variedad,'') = COALESCE(datos.variedad,'')
+                AND COALESCE(d3.calidad,'') = COALESCE(datos.calidad,'')
+                AND COALESCE(d3.unidad,'') = COALESCE(datos.unidad,'')
                 AND d3.precio_promedio = MAX(datos.precio_promedio) LIMIT 1) as mercado_caro,
                COUNT(DISTINCT mercado) as num_mercados
         FROM datos
-        GROUP BY producto, categoria
+        GROUP BY producto, categoria, variedad, calidad, unidad
         HAVING COUNT(DISTINCT mercado) > 1
         ORDER BY spread_pct DESC NULLS LAST
     """
@@ -408,9 +450,10 @@ async def get_spread_mercados(fecha: date = None) -> list[dict]:
 
 
 async def get_volatilidad(dias: int = 30, limit: int = 50) -> list[dict]:
-    """Ranking de productos por volatilidad de precio"""
+    """Ranking de productos por volatilidad de precio (mismo formato)"""
     query = """
         SELECT pr.nombre as producto, pr.categoria, m.nombre as mercado,
+               p.variedad, p.calidad, p.unidad,
                ROUND(STDDEV(p.precio_promedio)::numeric, 2) as desviacion,
                ROUND(AVG(p.precio_promedio)::numeric, 2) as precio_medio,
                CASE WHEN AVG(p.precio_promedio) > 0
@@ -424,7 +467,7 @@ async def get_volatilidad(dias: int = 30, limit: int = 50) -> list[dict]:
         JOIN mercados m ON p.mercado_id = m.id
         WHERE p.fecha >= CURRENT_DATE - $1 * INTERVAL '1 day'
         AND p.precio_promedio IS NOT NULL
-        GROUP BY pr.nombre, pr.categoria, m.nombre
+        GROUP BY pr.nombre, pr.categoria, m.nombre, p.variedad, p.calidad, p.unidad
         HAVING COUNT(*) >= 5
         ORDER BY coef_variacion DESC NULLS LAST
         LIMIT $2
@@ -435,7 +478,8 @@ async def get_volatilidad(dias: int = 30, limit: int = 50) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-async def get_estacionalidad(producto: str, mercado: str = None) -> list[dict]:
+async def get_estacionalidad(producto: str, mercado: str = None,
+                              variedad: str = None, calidad: str = None, unidad: str = None) -> list[dict]:
     """Precio promedio por mes para análisis estacional"""
     query = """
         SELECT EXTRACT(MONTH FROM p.fecha)::int as mes,
@@ -454,6 +498,18 @@ async def get_estacionalidad(producto: str, mercado: str = None) -> list[dict]:
         query += f" AND m.nombre = ${idx}"
         params.append(mercado)
         idx += 1
+    if variedad:
+        query += f" AND p.variedad = ${idx}"
+        params.append(variedad)
+        idx += 1
+    if calidad:
+        query += f" AND p.calidad = ${idx}"
+        params.append(calidad)
+        idx += 1
+    if unidad:
+        query += f" AND p.unidad = ${idx}"
+        params.append(unidad)
+        idx += 1
 
     query += " GROUP BY mes, anio ORDER BY anio, mes"
 
@@ -462,15 +518,32 @@ async def get_estacionalidad(producto: str, mercado: str = None) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-async def get_correlaciones(producto: str, mercado: str, top_n: int = 10) -> list[dict]:
+async def get_correlaciones(producto: str, mercado: str, top_n: int = 10,
+                            variedad: str = None, calidad: str = None, unidad: str = None) -> list[dict]:
     """Encontrar productos que se correlacionan en precio con el producto dado"""
-    query = """
+    filtros_sub = ""
+    params_extra = []
+    idx_extra = 4
+    if variedad:
+        filtros_sub += f" AND p.variedad = ${idx_extra}"
+        params_extra.append(variedad)
+        idx_extra += 1
+    if calidad:
+        filtros_sub += f" AND p.calidad = ${idx_extra}"
+        params_extra.append(calidad)
+        idx_extra += 1
+    if unidad:
+        filtros_sub += f" AND p.unidad = ${idx_extra}"
+        params_extra.append(unidad)
+        idx_extra += 1
+
+    query = f"""
         WITH base AS (
             SELECT p.fecha, p.precio_promedio
             FROM precios p
             JOIN productos pr ON p.producto_id = pr.id
             JOIN mercados m ON p.mercado_id = m.id
-            WHERE pr.nombre = $1 AND m.nombre = $2
+            WHERE pr.nombre = $1 AND m.nombre = $2{filtros_sub}
         ),
         otros AS (
             SELECT pr.nombre as producto, pr.categoria, p.fecha, p.precio_promedio
@@ -491,20 +564,21 @@ async def get_correlaciones(producto: str, mercado: str, top_n: int = 10) -> lis
     """
 
     async with pool.acquire() as conn:
-        rows = await conn.fetch(query, producto, mercado, top_n)
+        rows = await conn.fetch(query, producto, mercado, top_n, *params_extra)
         return [dict(r) for r in rows]
 
 
 async def get_heatmap(fecha: date = None) -> list[dict]:
     """Datos para heatmap: precio promedio por producto x mercado"""
     query = """
-        SELECT pr.nombre as producto, pr.categoria, m.nombre as mercado, p.precio_promedio
+        SELECT pr.nombre as producto, pr.categoria, m.nombre as mercado,
+               p.variedad, p.calidad, p.unidad, p.precio_promedio
         FROM precios p
         JOIN productos pr ON p.producto_id = pr.id
         JOIN mercados m ON p.mercado_id = m.id
         WHERE p.fecha = COALESCE($1, (SELECT MAX(fecha) FROM precios))
         AND p.precio_promedio IS NOT NULL
-        ORDER BY pr.categoria, pr.nombre, m.nombre
+        ORDER BY pr.categoria, pr.nombre, p.unidad, m.nombre
     """
 
     async with pool.acquire() as conn:

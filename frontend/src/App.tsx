@@ -9,9 +9,7 @@ import VolatilidadView from './components/VolatilidadView';
 import EstacionalidadView from './components/EstacionalidadView';
 import CorrelacionesView from './components/CorrelacionesView';
 import HeatmapView from './components/HeatmapView';
-import CanastaView from './components/CanastaView';
 import ExportarView from './components/ExportarView';
-import ImportarView from './components/ImportarView';
 
 const views: Record<string, React.FC> = {
   'resumen': ResumenView,
@@ -23,9 +21,7 @@ const views: Record<string, React.FC> = {
   'estacionalidad': EstacionalidadView,
   'correlaciones': CorrelacionesView,
   'heatmap': HeatmapView,
-  'canasta': CanastaView,
   'exportar': ExportarView,
-  'importar': ImportarView,
 };
 
 function App() {

@@ -15,7 +15,10 @@ export default function SpreadView() {
   }, []);
 
   const filtered = data.filter((d) => !catFilter || d.categoria === catFilter);
-  const top20 = filtered.slice(0, 20);
+  const top20 = filtered.slice(0, 20).map((d) => ({
+    ...d,
+    label: `${d.producto}${d.unidad ? ` (${d.unidad})` : ''}`,
+  }));
 
   return (
     <div className="space-y-4">
@@ -46,7 +49,7 @@ export default function SpreadView() {
             <BarChart data={top20} layout="vertical" margin={{ left: 120 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis type="number" tickFormatter={(v: number) => `${v}%`} tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="producto" tick={{ fontSize: 11 }} width={110} />
+              <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={140} />
               <Tooltip formatter={(value: number) => [`${value}%`, 'Spread']} />
               <Bar dataKey="spread_pct" radius={[0, 4, 4, 0]}>
                 {top20.map((_: any, i: number) => (
@@ -66,6 +69,7 @@ export default function SpreadView() {
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Producto</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Cat.</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Formato</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Más Barato</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Precio Mín</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Más Caro</th>
@@ -79,14 +83,14 @@ export default function SpreadView() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    {Array.from({ length: 9 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded" /></td>
                     ))}
                   </tr>
                 ))
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-400">Sin datos</td>
+                  <td colSpan={10} className="px-4 py-8 text-center text-gray-400">Sin datos</td>
                 </tr>
               ) : (
                 filtered.map((d, i) => (
@@ -97,6 +101,9 @@ export default function SpreadView() {
                         ${d.categoria === 'fruta' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
                         {d.categoria}
                       </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-gray-500">
+                      {[d.variedad, d.calidad, d.unidad].filter(Boolean).join(' · ') || '-'}
                     </td>
                     <td className="px-4 py-2.5 text-green-700 font-medium">{d.mercado_barato}</td>
                     <td className="px-4 py-2.5 text-right text-green-600">${d.precio_min_mercado?.toLocaleString()}</td>

@@ -45,6 +45,7 @@ export default function VariacionesView() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Producto</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Cat.</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Mercado</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Formato</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Precio Anterior</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Precio Actual</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Variación</th>
@@ -55,14 +56,14 @@ export default function VariacionesView() {
               {loading ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    {Array.from({ length: 7 }).map((_, j) => (
+                    {Array.from({ length: 8 }).map((_, j) => (
                       <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded" /></td>
                     ))}
                   </tr>
                 ))
               ) : data.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-400">Sin datos de variación</td>
+                  <td colSpan={8} className="px-4 py-8 text-center text-gray-400">Sin datos de variación</td>
                 </tr>
               ) : (
                 data.map((d, i) => {
@@ -79,6 +80,9 @@ export default function VariacionesView() {
                         </span>
                       </td>
                       <td className="px-4 py-2.5 text-gray-600">{d.mercado}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-500">
+                        {[d.variedad, d.calidad, d.unidad].filter(Boolean).join(' · ') || '-'}
+                      </td>
                       <td className="px-4 py-2.5 text-right text-gray-500">
                         ${d.precio_anterior?.toLocaleString()}
                       </td>

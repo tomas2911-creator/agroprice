@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 
 from src.config import PORT
 from src.database import (
-    init_db, close_db, get_mercados, get_productos, get_precios,
+    init_db, close_db, get_mercados, get_productos, get_subcategorias, get_precios,
     get_variaciones, get_serie_temporal, get_spread_mercados,
     get_volatilidad, get_estacionalidad, get_correlaciones,
     get_heatmap, get_resumen_diario, get_canasta, get_importaciones,
@@ -82,6 +82,12 @@ async def listar_fechas():
     return await get_fechas_disponibles()
 
 
+@app.get("/api/producto/subcategorias")
+async def subcategorias_producto(producto: str):
+    """Obtener variedades, calidades y unidades de un producto"""
+    return await get_subcategorias(producto)
+
+
 @app.get("/api/precios")
 async def consultar_precios(
     fecha_inicio: Optional[date] = None,
@@ -139,11 +145,15 @@ async def serie_temporal(
     producto: str,
     mercados: Optional[str] = None,
     fecha_inicio: Optional[date] = None,
-    fecha_fin: Optional[date] = None
+    fecha_fin: Optional[date] = None,
+    variedad: Optional[str] = None,
+    calidad: Optional[str] = None,
+    unidad: Optional[str] = None
 ):
     """Serie temporal de un producto"""
     mercados_list = [m.strip() for m in mercados.split(",")] if mercados else None
-    return await get_serie_temporal(producto, mercados_list, fecha_inicio, fecha_fin)
+    return await get_serie_temporal(producto, mercados_list, fecha_inicio, fecha_fin,
+                                     variedad=variedad, calidad=calidad, unidad=unidad)
 
 
 @app.get("/api/spread")
@@ -164,20 +174,26 @@ async def ranking_volatilidad(
 @app.get("/api/estacionalidad")
 async def estacionalidad(
     producto: str,
-    mercado: Optional[str] = None
+    mercado: Optional[str] = None,
+    variedad: Optional[str] = None,
+    calidad: Optional[str] = None,
+    unidad: Optional[str] = None
 ):
     """Análisis estacional de un producto"""
-    return await get_estacionalidad(producto, mercado)
+    return await get_estacionalidad(producto, mercado, variedad=variedad, calidad=calidad, unidad=unidad)
 
 
 @app.get("/api/correlaciones")
 async def correlaciones(
     producto: str,
     mercado: str,
-    top_n: int = Query(10, ge=1, le=50)
+    top_n: int = Query(10, ge=1, le=50),
+    variedad: Optional[str] = None,
+    calidad: Optional[str] = None,
+    unidad: Optional[str] = None
 ):
     """Productos correlacionados en precio"""
-    return await get_correlaciones(producto, mercado, top_n)
+    return await get_correlaciones(producto, mercado, top_n, variedad=variedad, calidad=calidad, unidad=unidad)
 
 
 @app.get("/api/heatmap")

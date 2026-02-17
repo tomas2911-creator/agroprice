@@ -10,6 +10,8 @@ async function fetchJSON(url: string, options?: RequestInit) {
 export const getMercados = () => fetchJSON('/api/mercados');
 export const getProductos = (categoria?: string) =>
   fetchJSON(`/api/productos${categoria ? `?categoria=${categoria}` : ''}`);
+export const getSubcategorias = (producto: string) =>
+  fetchJSON(`/api/producto/subcategorias?producto=${encodeURIComponent(producto)}`);
 export const getFechas = () => fetchJSON('/api/fechas');
 
 // Precios
@@ -56,12 +58,18 @@ export const getSerieTemporal = (params: {
   mercados?: string[];
   fecha_inicio?: string;
   fecha_fin?: string;
+  variedad?: string;
+  calidad?: string;
+  unidad?: string;
 }) => {
   const sp = new URLSearchParams();
   sp.set('producto', params.producto);
   if (params.mercados?.length) sp.set('mercados', params.mercados.join(','));
   if (params.fecha_inicio) sp.set('fecha_inicio', params.fecha_inicio);
   if (params.fecha_fin) sp.set('fecha_fin', params.fecha_fin);
+  if (params.variedad) sp.set('variedad', params.variedad);
+  if (params.calidad) sp.set('calidad', params.calidad);
+  if (params.unidad) sp.set('unidad', params.unidad);
   return fetchJSON(`/api/serie-temporal?${sp.toString()}`);
 };
 
@@ -78,52 +86,44 @@ export const getVolatilidad = (dias?: number, limit?: number) => {
 };
 
 // Estacionalidad
-export const getEstacionalidad = (producto: string, mercado?: string) => {
+export const getEstacionalidad = (params: {
+  producto: string;
+  mercado?: string;
+  variedad?: string;
+  calidad?: string;
+  unidad?: string;
+}) => {
   const sp = new URLSearchParams();
-  sp.set('producto', producto);
-  if (mercado) sp.set('mercado', mercado);
+  sp.set('producto', params.producto);
+  if (params.mercado) sp.set('mercado', params.mercado);
+  if (params.variedad) sp.set('variedad', params.variedad);
+  if (params.calidad) sp.set('calidad', params.calidad);
+  if (params.unidad) sp.set('unidad', params.unidad);
   return fetchJSON(`/api/estacionalidad?${sp.toString()}`);
 };
 
 // Correlaciones
-export const getCorrelaciones = (producto: string, mercado: string, topN?: number) => {
+export const getCorrelaciones = (params: {
+  producto: string;
+  mercado: string;
+  topN?: number;
+  variedad?: string;
+  calidad?: string;
+  unidad?: string;
+}) => {
   const sp = new URLSearchParams();
-  sp.set('producto', producto);
-  sp.set('mercado', mercado);
-  if (topN) sp.set('top_n', String(topN));
+  sp.set('producto', params.producto);
+  sp.set('mercado', params.mercado);
+  if (params.topN) sp.set('top_n', String(params.topN));
+  if (params.variedad) sp.set('variedad', params.variedad);
+  if (params.calidad) sp.set('calidad', params.calidad);
+  if (params.unidad) sp.set('unidad', params.unidad);
   return fetchJSON(`/api/correlaciones?${sp.toString()}`);
 };
 
 // Heatmap
 export const getHeatmap = (fecha?: string) =>
   fetchJSON(`/api/heatmap${fecha ? `?fecha=${fecha}` : ''}`);
-
-// Canasta
-export const getCanasta = (config: {
-  nombre: string;
-  items: { producto: string; mercado: string }[];
-  fecha_inicio?: string;
-  fecha_fin?: string;
-}) =>
-  fetchJSON('/api/canasta', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  });
-
-// Importación
-export const importarFecha = (fecha: string, forzar = false) =>
-  fetchJSON(`/api/importar/fecha?fecha=${fecha}&forzar=${forzar}`, { method: 'POST' });
-
-export const importarHistorico = (fechaInicio: string, fechaFin?: string, forzar = false) => {
-  const sp = new URLSearchParams();
-  sp.set('fecha_inicio', fechaInicio);
-  if (fechaFin) sp.set('fecha_fin', fechaFin);
-  sp.set('forzar', String(forzar));
-  return fetchJSON(`/api/importar/historico?${sp.toString()}`, { method: 'POST' });
-};
-
-export const getImportaciones = () => fetchJSON('/api/importaciones');
 
 // Export CSV
 export const exportCSV = (params: {
