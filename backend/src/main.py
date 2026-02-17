@@ -252,10 +252,10 @@ async def exportar_csv(
     )
 
     def generar_csv():
-        yield "fecha,mercado,producto,categoria,variedad,unidad,precio_min,precio_max,precio_promedio,volumen\n"
+        yield "fecha,mercado,producto,categoria,variedad,calidad,unidad,precio_min,precio_max,precio_promedio,volumen\n"
         for d in datos:
             yield (f"{d['fecha']},{d['mercado']},{d['producto']},{d['categoria']},"
-                   f"{d.get('variedad', '')},{d.get('unidad', '')},"
+                   f"{d.get('variedad', '')},{d.get('calidad', '')},{d.get('unidad', '')},"
                    f"{d.get('precio_min', '')},{d.get('precio_max', '')},"
                    f"{d.get('precio_promedio', '')},{d.get('volumen', '')}\n")
 

@@ -35,13 +35,34 @@ async def init_db():
                 mercado_id INTEGER REFERENCES mercados(id),
                 producto_id INTEGER REFERENCES productos(id),
                 variedad TEXT,
+                calidad TEXT,
                 unidad TEXT,
                 precio_min REAL,
                 precio_max REAL,
                 precio_promedio REAL,
-                volumen REAL,
-                UNIQUE(fecha, mercado_id, producto_id, variedad)
+                volumen REAL
             );
+
+            -- Migración: agregar calidad si no existe
+            DO $$ BEGIN
+                ALTER TABLE precios ADD COLUMN IF NOT EXISTS calidad TEXT;
+            EXCEPTION WHEN duplicate_column THEN NULL;
+            END $$;
+
+            -- Crear unique constraint si no existe
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'uq_precio_completo'
+                ) THEN
+                    -- Eliminar constraint vieja si existe
+                    BEGIN
+                        ALTER TABLE precios DROP CONSTRAINT IF EXISTS precios_fecha_mercado_id_producto_id_variedad_key;
+                    EXCEPTION WHEN undefined_object THEN NULL;
+                    END;
+                    ALTER TABLE precios ADD CONSTRAINT uq_precio_completo
+                        UNIQUE(fecha, mercado_id, producto_id, variedad, calidad, unidad);
+                END IF;
+            END $$;
 
             CREATE TABLE IF NOT EXISTS importaciones (
                 id SERIAL PRIMARY KEY,
@@ -109,10 +130,10 @@ async def insertar_precios(registros: list[dict]) -> int:
 
                 try:
                     await conn.execute("""
-                        INSERT INTO precios (fecha, mercado_id, producto_id, variedad, unidad,
+                        INSERT INTO precios (fecha, mercado_id, producto_id, variedad, calidad, unidad,
                                            precio_min, precio_max, precio_promedio, volumen)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                        ON CONFLICT (fecha, mercado_id, producto_id, variedad)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                        ON CONFLICT ON CONSTRAINT uq_precio_completo
                         DO UPDATE SET
                             precio_min = EXCLUDED.precio_min,
                             precio_max = EXCLUDED.precio_max,
@@ -120,7 +141,7 @@ async def insertar_precios(registros: list[dict]) -> int:
                             volumen = EXCLUDED.volumen
                     """,
                         r["fecha"], mercado_id, producto_id,
-                        r.get("variedad"), r.get("unidad"),
+                        r.get("variedad"), r.get("calidad"), r.get("unidad"),
                         r.get("precio_min"), r.get("precio_max"),
                         r.get("precio_promedio"), r.get("volumen")
                     )
@@ -187,7 +208,7 @@ async def get_precios(
     """Obtener precios con filtros"""
     query = """
         SELECT p.fecha, m.nombre as mercado, pr.nombre as producto, pr.categoria,
-               p.variedad, p.unidad, p.precio_min, p.precio_max, p.precio_promedio, p.volumen
+               p.variedad, p.calidad, p.unidad, p.precio_min, p.precio_max, p.precio_promedio, p.volumen
         FROM precios p
         JOIN mercados m ON p.mercado_id = m.id
         JOIN productos pr ON p.producto_id = pr.id
@@ -558,7 +579,7 @@ async def get_importaciones() -> list[dict]:
     """Listar log de importaciones"""
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT * FROM importaciones ORDER BY fecha_boletin DESC LIMIT 100"
+            "SELECT * FROM importaciones ORDER BY fecha_boletin DESC LIMIT 500"
         )
         return [dict(r) for r in rows]
 
