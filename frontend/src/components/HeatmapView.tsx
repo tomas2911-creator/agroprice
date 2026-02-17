@@ -15,36 +15,43 @@ export default function HeatmapView() {
 
   const filtered = data.filter((d) => !catFilter || d.categoria === catFilter);
 
-  // Obtener mercados y productos únicos (con unidad para distinguir formato)
+  // Agrupar por producto × mercado (promedio de todos los formatos/unidades)
   const mercados = [...new Set(filtered.map((d) => d.mercado))].sort();
   const productosSet = new Set<string>();
+  const precioAgg: Record<string, { sum: number; count: number }> = {};
+
   filtered.forEach((d) => {
-    const label = d.unidad && d.unidad !== 'Sin especificar' ? `${d.producto} (${d.unidad})` : d.producto;
-    productosSet.add(label);
+    const prod = d.producto;
+    productosSet.add(prod);
+    const key = `${prod}|${d.mercado}`;
+    if (!precioAgg[key]) precioAgg[key] = { sum: 0, count: 0 };
+    precioAgg[key].sum += d.precio_promedio;
+    precioAgg[key].count += 1;
   });
   const productos = [...productosSet].sort();
 
-  // Crear mapa de precios
+  // Mapa de precios promediados
   const precioMap: Record<string, number> = {};
-  let minPrecio = Infinity;
-  let maxPrecio = 0;
-  filtered.forEach((d) => {
-    const label = d.unidad && d.unidad !== 'Sin especificar' ? `${d.producto} (${d.unidad})` : d.producto;
-    const key = `${label}|${d.mercado}`;
-    precioMap[key] = d.precio_promedio;
-    if (d.precio_promedio < minPrecio) minPrecio = d.precio_promedio;
-    if (d.precio_promedio > maxPrecio) maxPrecio = d.precio_promedio;
+  // Min/max por fila para escala relativa por producto
+  const rowStats: Record<string, { min: number; max: number }> = {};
+  Object.entries(precioAgg).forEach(([key, agg]) => {
+    const avg = Math.round(agg.sum / agg.count);
+    precioMap[key] = avg;
+    const prod = key.split('|')[0];
+    if (!rowStats[prod]) rowStats[prod] = { min: Infinity, max: 0 };
+    if (avg < rowStats[prod].min) rowStats[prod].min = avg;
+    if (avg > rowStats[prod].max) rowStats[prod].max = avg;
   });
 
-  const getColor = (valor: number | undefined) => {
-    if (valor === undefined) return 'bg-gray-100';
-    const rango = maxPrecio - minPrecio || 1;
-    const pct = (valor - minPrecio) / rango;
-    if (pct < 0.2) return 'bg-green-100 text-green-800';
-    if (pct < 0.4) return 'bg-green-200 text-green-900';
-    if (pct < 0.6) return 'bg-yellow-100 text-yellow-800';
-    if (pct < 0.8) return 'bg-orange-200 text-orange-900';
-    return 'bg-red-200 text-red-900';
+  const getColor = (valor: number | undefined, prod: string) => {
+    if (valor === undefined) return 'bg-gray-50';
+    const stats = rowStats[prod];
+    if (!stats || stats.max === stats.min) return 'bg-green-100 text-green-800';
+    const pct = (valor - stats.min) / (stats.max - stats.min);
+    if (pct < 0.25) return 'bg-green-100 text-green-800';
+    if (pct < 0.5) return 'bg-green-200 text-green-900';
+    if (pct < 0.75) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-orange-200 text-orange-900';
   };
 
   if (loading) {
@@ -104,8 +111,8 @@ export default function HeatmapView() {
                     {mercados.map((merc) => {
                       const valor = precioMap[`${prod}|${merc}`];
                       return (
-                        <td key={merc} className={`px-3 py-1.5 text-center font-mono ${getColor(valor)}`}>
-                          {valor !== undefined ? `$${valor.toLocaleString()}` : '-'}
+                        <td key={merc} className={`px-3 py-1.5 text-center font-mono ${getColor(valor, prod)}`}>
+                          {valor !== undefined ? `$${valor.toLocaleString()}` : '–'}
                         </td>
                       );
                     })}

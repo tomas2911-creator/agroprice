@@ -14,11 +14,19 @@ export default function SpreadView() {
       .finally(() => setLoading(false));
   }, []);
 
+  const shortUnit = (u: string) => {
+    if (!u) return '';
+    return u.replace('$/','').replace('volumen en ','')
+      .replace(' kilos','kg').replace(' unidades','u').replace(' empedrada','').replace(' granel','');
+  };
+
   const filtered = data.filter((d) => !catFilter || d.categoria === catFilter);
-  const top20 = filtered.slice(0, 20).map((d) => ({
-    ...d,
-    label: `${d.producto}${d.unidad ? ` (${d.unidad})` : ''}`,
-  }));
+  const top20 = filtered.slice(0, 20).map((d) => {
+    const parts = [d.producto];
+    if (d.variedad) parts.push(d.variedad);
+    if (d.unidad) parts.push(shortUnit(d.unidad));
+    return { ...d, label: parts.join(' · ') };
+  });
 
   return (
     <div className="space-y-4">
@@ -46,10 +54,10 @@ export default function SpreadView() {
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="font-semibold text-gray-900 mb-3">Top 20 — Mayor spread porcentual</h3>
           <ResponsiveContainer width="100%" height={500}>
-            <BarChart data={top20} layout="vertical" margin={{ left: 120 }}>
+            <BarChart data={top20} layout="vertical" margin={{ left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis type="number" tickFormatter={(v: number) => `${v}%`} tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={140} />
+              <YAxis type="category" dataKey="label" tick={{ fontSize: 10 }} width={220} />
               <Tooltip formatter={(value: number) => [`${value}%`, 'Spread']} />
               <Bar dataKey="spread_pct" radius={[0, 4, 4, 0]}>
                 {top20.map((_: any, i: number) => (
