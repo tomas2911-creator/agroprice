@@ -272,12 +272,16 @@ async def predecir_precios(
         modelo = "Suavizado exponencial"
 
     # ── Métricas de calidad ──
-    skip = min(period, max(n // 4, 1))
+    # Para HW, los primeros 'period' puntos son inicialización, no predicciones reales
+    skip = period if (use_hw or use_hw_conserv) else max(1, n // 6)
+    if skip >= n:
+        skip = max(1, n // 4)
     residuos = precios[skip:] - fitted[skip:]
     p_mean = float(np.mean(precios))
 
     ss_res = float(np.sum(residuos ** 2))
-    ss_tot = float(np.sum((precios[skip:] - np.mean(precios[skip:])) ** 2))
+    # R² contra media de la serie completa (más justo que media parcial)
+    ss_tot = float(np.sum((precios[skip:] - p_mean) ** 2))
     r_squared = max(0.0, 1 - ss_res / max(ss_tot, 1e-10))
 
     mape = float(np.mean(np.abs(residuos / np.maximum(precios[skip:], 1)) * 100))
