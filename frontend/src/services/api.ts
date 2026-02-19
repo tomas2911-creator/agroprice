@@ -173,6 +173,10 @@ export const importarClima = (dias?: number) =>
 export const importarClimaHistorico = () =>
   fetchJSON('/api/clima/importar-historico', { method: 'POST' });
 
+// Importaciones
+export const getImportaciones = (limit = 5) =>
+  fetchJSON(`/api/importaciones?limit=${limit}`);
+
 // Export CSV
 export const exportCSV = (params: {
   fecha_inicio?: string;

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   LayoutDashboard, TrendingUp, BarChart3, Map, Activity,
   Flame, CalendarDays, GitCompare, Grid3X3, CloudRain,
-  Download, Menu, X, Leaf
+  Download, Menu, X, Leaf, CheckCircle2, AlertCircle, Clock
 } from 'lucide-react';
+import { getImportaciones } from '../services/api';
 
 const navItems = [
   { id: 'resumen', label: 'Resumen', icon: LayoutDashboard },
@@ -27,6 +28,53 @@ interface SidebarProps {
 export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<{
+    fecha: string; estado: string; registros: number; fechaImport: string;
+  } | null>(null);
+
+  useEffect(() => {
+    getImportaciones(10).then((data: any[]) => {
+      // Buscar la última importación exitosa (estado "ok")
+      const lastOk = data.find((d: any) => d.estado === 'ok');
+      if (lastOk) {
+        setLastUpdate({
+          fecha: lastOk.fecha_boletin,
+          estado: lastOk.estado,
+          registros: lastOk.registros,
+          fechaImport: lastOk.fecha_importacion,
+        });
+      } else if (data.length > 0) {
+        setLastUpdate({
+          fecha: data[0].fecha_boletin,
+          estado: data[0].estado,
+          registros: data[0].registros,
+          fechaImport: data[0].fecha_importacion,
+        });
+      }
+    }).catch(() => {});
+    // Refrescar cada 5 minutos
+    const interval = setInterval(() => {
+      getImportaciones(10).then((data: any[]) => {
+        const lastOk = data.find((d: any) => d.estado === 'ok');
+        if (lastOk) {
+          setLastUpdate({
+            fecha: lastOk.fecha_boletin,
+            estado: lastOk.estado,
+            registros: lastOk.registros,
+            fechaImport: lastOk.fecha_importacion,
+          });
+        }
+      }).catch(() => {});
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatFecha = (f: string) => {
+    try {
+      const d = new Date(f + 'T12:00:00');
+      return d.toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch { return f; }
+  };
 
   return (
     <>
@@ -100,8 +148,37 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
 
         {/* Footer */}
         {!collapsed && (
-          <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400">
-            Fuente: ODEPA Chile
+          <div className="px-4 py-3 border-t border-gray-100 space-y-2">
+            <div className="text-xs text-gray-400">Fuente: ODEPA Chile</div>
+            {lastUpdate && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  {lastUpdate.estado === 'ok' ? (
+                    <CheckCircle2 size={12} className="text-green-500 flex-shrink-0" />
+                  ) : lastUpdate.estado === 'no_disponible' ? (
+                    <AlertCircle size={12} className="text-amber-500 flex-shrink-0" />
+                  ) : (
+                    <Clock size={12} className="text-gray-400 flex-shrink-0" />
+                  )}
+                  <span className="text-[11px] font-medium text-gray-600">
+                    {lastUpdate.estado === 'ok' ? 'Datos al día' : 'Boletín no disponible'}
+                  </span>
+                </div>
+                <div className="text-[10px] text-gray-400 pl-4 leading-tight">
+                  Último boletín: {formatFecha(lastUpdate.fecha)}
+                  <br />
+                  {lastUpdate.registros > 0 && (
+                    <span className="text-green-600">{lastUpdate.registros} registros cargados</span>
+                  )}
+                </div>
+              </div>
+            )}
+            {!lastUpdate && (
+              <div className="flex items-center gap-1.5">
+                <Clock size={12} className="text-gray-300" />
+                <span className="text-[10px] text-gray-300">Cargando estado…</span>
+              </div>
+            )}
           </div>
         )}
       </aside>
