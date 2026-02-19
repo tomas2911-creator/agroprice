@@ -248,42 +248,89 @@ async def predecir_precios(
     precios = np.array([float(r["precio_promedio"]) for r in historico])
     volumenes = np.array([float(r["volumen"] or 0) for r in historico])
 
-    # ── Entrenar modelo ──
-    use_hw = n >= 2 * period
-    use_hw_conserv = not use_hw and n >= period
+    # ── Función auxiliar para calcular R² de un modelo ──
+    def _calc_r2(y, f, skip_n):
+        if skip_n >= len(y):
+            skip_n = max(1, len(y) // 4)
+        res = y[skip_n:] - f[skip_n:]
+        ss_r = float(np.sum(res ** 2))
+        ss_t = float(np.sum((y[skip_n:] - np.mean(y[skip_n:])) ** 2))
+        return max(0.0, 1 - ss_r / max(ss_t, 1e-10))
 
-    if use_hw:
-        alpha, beta, gamma = _optimize_hw(precios, period)
-        fitted, forecasts = _hw_multiplicative(precios, period, alpha, beta, gamma, horizonte)
-        modelo = "Holt-Winters (optimizado)"
-    elif use_hw_conserv:
-        alpha, beta, gamma = 0.3, 0.05, 0.3
-        fitted, forecasts = _hw_multiplicative(precios, period, alpha, beta, gamma, horizonte)
-        if fitted is None:
-            alpha = _optimize_exp(precios)
-            fitted, forecasts = _exp_smoothing(precios, alpha, horizonte)
-            modelo = "Suavizado exponencial"
-        else:
-            modelo = "Holt-Winters (conservador)"
-    else:
-        alpha = _optimize_exp(precios)
-        fitted, forecasts = _exp_smoothing(precios, alpha, horizonte)
-        beta, gamma = 0.0, 0.0
-        modelo = "Suavizado exponencial"
+    # ── Entrenar modelos candidatos y elegir el mejor ──
+    candidatos = []
+
+    # Candidato 1: Holt-Winters optimizado (necesita >= 2 ciclos)
+    if n >= 2 * period:
+        try:
+            hw_a, hw_b, hw_g = _optimize_hw(precios, period)
+            hw_fitted, hw_fc = _hw_multiplicative(precios, period, hw_a, hw_b, hw_g, horizonte)
+            if hw_fitted is not None:
+                hw_r2 = _calc_r2(precios, hw_fitted, period)
+                candidatos.append({
+                    "modelo": "Holt-Winters (optimizado)", "fitted": hw_fitted,
+                    "forecasts": hw_fc, "r2": hw_r2, "alpha": hw_a, "beta": hw_b,
+                    "gamma": hw_g, "skip": period, "is_hw": True,
+                })
+        except Exception:
+            pass
+
+    # Candidato 2: Holt-Winters conservador (necesita >= 1 ciclo)
+    if n >= period and not any(c["modelo"] == "Holt-Winters (optimizado)" for c in candidatos):
+        try:
+            hw_fitted, hw_fc = _hw_multiplicative(precios, period, 0.3, 0.05, 0.3, horizonte)
+            if hw_fitted is not None:
+                hw_r2 = _calc_r2(precios, hw_fitted, period)
+                candidatos.append({
+                    "modelo": "Holt-Winters (conservador)", "fitted": hw_fitted,
+                    "forecasts": hw_fc, "r2": hw_r2, "alpha": 0.3, "beta": 0.05,
+                    "gamma": 0.3, "skip": period, "is_hw": True,
+                })
+        except Exception:
+            pass
+
+    # Candidato 3: Suavizado exponencial con tendencia (Holt) — siempre disponible
+    try:
+        exp_a = _optimize_exp(precios)
+        exp_fitted, exp_fc = _exp_smoothing(precios, exp_a, horizonte)
+        exp_skip = max(1, n // 6)
+        exp_r2 = _calc_r2(precios, exp_fitted, exp_skip)
+        candidatos.append({
+            "modelo": "Suavizado exponencial", "fitted": exp_fitted,
+            "forecasts": exp_fc, "r2": exp_r2, "alpha": exp_a, "beta": 0.0,
+            "gamma": 0.0, "skip": exp_skip, "is_hw": False,
+        })
+    except Exception:
+        pass
+
+    # Elegir el mejor modelo por R²
+    if not candidatos:
+        return {
+            "error": "No se pudo ajustar ningún modelo a los datos.",
+            "historico": [], "prediccion": [], "estacionalidad": [],
+            "tendencia": {}, "metricas": {}, "granularidad": granularidad,
+        }
+
+    best = max(candidatos, key=lambda c: c["r2"])
+    fitted = best["fitted"]
+    forecasts = best["forecasts"]
+    modelo = best["modelo"]
+    alpha = best["alpha"]
+    beta = best["beta"]
+    gamma = best["gamma"]
+    skip = best["skip"]
+    r_squared = best["r2"]
+    is_hw = best["is_hw"]
+
+    logger.info(
+        "Modelo seleccionado: %s (R²=%.3f) entre %d candidatos: %s",
+        modelo, r_squared, len(candidatos),
+        [(c["modelo"], round(c["r2"], 3)) for c in candidatos]
+    )
 
     # ── Métricas de calidad ──
-    # Para HW, los primeros 'period' puntos son inicialización, no predicciones reales
-    skip = period if (use_hw or use_hw_conserv) else max(1, n // 6)
-    if skip >= n:
-        skip = max(1, n // 4)
-    residuos = precios[skip:] - fitted[skip:]
     p_mean = float(np.mean(precios))
-
-    ss_res = float(np.sum(residuos ** 2))
-    # R² contra media de la serie completa (más justo que media parcial)
-    ss_tot = float(np.sum((precios[skip:] - p_mean) ** 2))
-    r_squared = max(0.0, 1 - ss_res / max(ss_tot, 1e-10))
-
+    residuos = precios[skip:] - fitted[skip:]
     mape = float(np.mean(np.abs(residuos / np.maximum(precios[skip:], 1)) * 100))
     std_error = float(np.std(residuos)) if len(residuos) > 1 else float(np.std(precios) * 0.3)
 
@@ -295,10 +342,8 @@ async def predecir_precios(
             train = precios[:n - k]
             actual = float(precios[n - k])
             try:
-                if use_hw and len(train) >= 2 * period:
+                if is_hw and len(train) >= period:
                     _, fc = _hw_multiplicative(train, period, alpha, beta, gamma, k)
-                elif len(train) >= period:
-                    _, fc = _hw_multiplicative(train, period, 0.3, 0.05, 0.3, k)
                 else:
                     _, fc = _exp_smoothing(train, alpha, k)
                 if fc is not None and len(fc) >= k:
