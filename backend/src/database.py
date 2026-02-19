@@ -430,11 +430,26 @@ async def get_variaciones(dias: int = 7, mercados: list[str] = None,
 
 async def get_serie_temporal(producto: str, mercados: list[str] = None,
                              fecha_inicio: date = None, fecha_fin: date = None,
-                             variedad: str = None, calidad: str = None, unidad: str = None) -> list[dict]:
-    """Serie temporal de un producto en uno o más mercados"""
-    query = """
-        SELECT p.fecha, m.nombre as mercado, p.variedad, p.calidad, p.unidad,
-               p.precio_promedio, p.precio_min, p.precio_max, p.volumen
+                             variedad: str = None, calidad: str = None, unidad: str = None,
+                             agregacion: str = "diario") -> list[dict]:
+    """Serie temporal de un producto en uno o más mercados.
+    agregacion: 'diario', 'semanal' o 'mensual'"""
+
+    # Selección de campo fecha según agregación
+    if agregacion == "semanal":
+        fecha_expr = "DATE_TRUNC('week', p.fecha)::date"
+    elif agregacion == "mensual":
+        fecha_expr = "DATE_TRUNC('month', p.fecha)::date"
+    else:
+        fecha_expr = "p.fecha"
+
+    query = f"""
+        SELECT {fecha_expr} as fecha, m.nombre as mercado,
+               p.variedad, COALESCE(p.calidad, 'Sin calidad') as calidad, p.unidad,
+               ROUND(AVG(p.precio_promedio)::numeric, 0) as precio_promedio,
+               ROUND(AVG(p.precio_min)::numeric, 0) as precio_min,
+               ROUND(AVG(p.precio_max)::numeric, 0) as precio_max,
+               ROUND(AVG(p.volumen)::numeric, 0) as volumen
         FROM precios p
         JOIN mercados m ON p.mercado_id = m.id
         JOIN productos pr ON p.producto_id = pr.id
@@ -468,7 +483,8 @@ async def get_serie_temporal(producto: str, mercados: list[str] = None,
         params.append(unidad)
         idx += 1
 
-    query += " ORDER BY p.fecha, m.nombre"
+    query += f" GROUP BY {fecha_expr}, m.nombre, p.variedad, p.calidad, p.unidad"
+    query += f" ORDER BY {fecha_expr}, m.nombre, p.calidad"
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(query, *params)

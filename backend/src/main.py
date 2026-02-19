@@ -175,12 +175,14 @@ async def serie_temporal(
     fecha_fin: Optional[date] = None,
     variedad: Optional[str] = None,
     calidad: Optional[str] = None,
-    unidad: Optional[str] = None
+    unidad: Optional[str] = None,
+    agregacion: Optional[str] = "diario"
 ):
-    """Serie temporal de un producto"""
+    """Serie temporal de un producto. agregacion: diario|semanal|mensual"""
     mercados_list = [m.strip() for m in mercados.split(",")] if mercados else None
     return await get_serie_temporal(producto, mercados_list, fecha_inicio, fecha_fin,
-                                     variedad=variedad, calidad=calidad, unidad=unidad)
+                                     variedad=variedad, calidad=calidad, unidad=unidad,
+                                     agregacion=agregacion or "diario")
 
 
 @app.get("/api/spread")

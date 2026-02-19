@@ -73,6 +73,7 @@ export const getSerieTemporal = (params: {
   variedad?: string;
   calidad?: string;
   unidad?: string;
+  agregacion?: string;
 }) => {
   const sp = new URLSearchParams();
   sp.set('producto', params.producto);
@@ -82,6 +83,7 @@ export const getSerieTemporal = (params: {
   if (params.variedad) sp.set('variedad', params.variedad);
   if (params.calidad) sp.set('calidad', params.calidad);
   if (params.unidad) sp.set('unidad', params.unidad);
+  if (params.agregacion) sp.set('agregacion', params.agregacion);
   return fetchJSON(`/api/serie-temporal?${sp.toString()}`);
 };
 
