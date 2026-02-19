@@ -7,9 +7,25 @@ import numpy as np
 from datetime import date, timedelta
 from calendar import monthrange
 
-from src.database import pool
+import src.database as _db
 
 logger = logging.getLogger("agroprice.forecast")
+
+
+def _get_pool():
+    """Obtener pool de conexiones de forma segura"""
+    p = _db.pool
+    if p is None:
+        raise RuntimeError("Pool de base de datos no inicializado")
+    return p
+
+
+def _add_months(d: date, months: int) -> date:
+    """Sumar meses a una fecha de forma segura"""
+    m = d.month - 1 + months
+    y = d.year + m // 12
+    m = m % 12 + 1
+    return date(y, m, 1)
 
 
 async def obtener_historico_mensual(
@@ -56,6 +72,7 @@ async def obtener_historico_mensual(
 
     query += " GROUP BY DATE_TRUNC('month', p.fecha) ORDER BY mes"
 
+    pool = _get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(query, *params)
         return [dict(r) for r in rows]
@@ -160,38 +177,33 @@ async def predecir_precios(
     predicciones = []
 
     for i in range(1, meses_futuro + 1):
-        # Mes futuro
-        mes_futuro_date = date(
-            ultimo_mes.year + (ultimo_mes.month + i - 1) // 12,
-            (ultimo_mes.month + i - 1) % 12 + 1,
-            1
-        )
+        mes_futuro_date = _add_months(ultimo_mes, i)
         mes_num = mes_futuro_date.month
 
         # Tendencia extrapolada
-        x_futuro = n + i - 1
-        tendencia_fut = a + b * x_futuro
+        x_futuro = float(n + i - 1)
+        tendencia_fut = float(a + b * x_futuro)
 
         # Precio predicho = tendencia * factor estacional
-        factor = factores_estacionales.get(mes_num, 1.0)
-        precio_pred = max(tendencia_fut * factor, 0)
+        factor = float(factores_estacionales.get(mes_num, 1.0))
+        precio_pred = max(tendencia_fut * factor, 0.0)
 
         # Bandas de confianza (se ensanchan con el tiempo)
-        incertidumbre = std_error * (1 + 0.1 * i)  # Crece 10% por mes
-        precio_min = max(precio_pred - 1.96 * incertidumbre, 0)
-        precio_max = precio_pred + 1.96 * incertidumbre
+        incertidumbre = float(std_error) * (1 + 0.1 * i)
+        precio_min_v = max(precio_pred - 1.96 * incertidumbre, 0.0)
+        precio_max_v = precio_pred + 1.96 * incertidumbre
 
         # Volumen esperado
-        vol_esperado = vol_estacional.get(mes_num, 0)
+        vol_esperado = float(vol_estacional.get(mes_num, 0))
 
         predicciones.append({
             "mes": mes_futuro_date.isoformat(),
-            "precio_predicho": round(precio_pred),
-            "precio_min": round(precio_min),
-            "precio_max": round(precio_max),
+            "precio_predicho": int(round(precio_pred)),
+            "precio_min": int(round(precio_min_v)),
+            "precio_max": int(round(precio_max_v)),
             "factor_estacional": round(factor, 3),
-            "volumen_esperado": round(vol_esperado),
-            "confianza": max(0, min(100, round(100 - mape - i * 2))),
+            "volumen_esperado": int(round(vol_esperado)),
+            "confianza": max(0, min(100, int(round(100 - mape - i * 2)))),
         })
 
     # ── 6. Formatear histórico ──
@@ -203,8 +215,8 @@ async def predecir_precios(
             "precio_min": float(r["precio_min"] or 0),
             "precio_max": float(r["precio_max"] or 0),
             "volumen": float(r["volumen"] or 0),
-            "tendencia": round(float(tendencia_values[i])),
-            "ajustado": round(float(fitted[i])),
+            "tendencia": int(round(float(tendencia_values[i]))),
+            "ajustado": int(round(float(fitted[i]))),
         })
 
     # ── 7. Estacionalidad formateada ──
@@ -214,34 +226,37 @@ async def predecir_precios(
     ]
     estacionalidad_fmt = []
     for m in range(1, 13):
+        f_est = float(factores_estacionales[m])
         estacionalidad_fmt.append({
             "mes": m,
             "nombre": nombres_mes[m],
-            "factor": round(factores_estacionales[m], 3),
-            "variacion_pct": round((factores_estacionales[m] - 1) * 100, 1),
-            "volumen_promedio": round(vol_estacional.get(m, 0)),
+            "factor": round(f_est, 3),
+            "variacion_pct": round((f_est - 1) * 100, 1),
+            "volumen_promedio": int(round(float(vol_estacional.get(m, 0)))),
         })
 
     # Tendencia mensual en pesos
-    tendencia_mensual = round(float(b))
-    tendencia_anual_pct = round(float(b * 12 / max(p_mean, 1) * 100), 1)
+    b_float = float(b)
+    p_mean_float = float(p_mean)
+    tendencia_mensual = int(round(b_float))
+    tendencia_anual_pct = round(b_float * 12 / max(p_mean_float, 1) * 100, 1)
 
     return {
         "historico": historico_fmt,
         "prediccion": predicciones,
         "estacionalidad": estacionalidad_fmt,
         "tendencia": {
-            "direccion": "alza" if b > 0 else "baja" if b < 0 else "estable",
+            "direccion": "alza" if b_float > 0 else "baja" if b_float < 0 else "estable",
             "cambio_mensual": tendencia_mensual,
             "cambio_anual_pct": tendencia_anual_pct,
-            "precio_base": round(float(a)),
+            "precio_base": int(round(float(a))),
         },
         "metricas": {
             "r_squared": round(float(r_squared), 3),
-            "mape": round(mape, 1),
-            "std_error": round(std_error),
+            "mape": round(float(mape), 1),
+            "std_error": int(round(float(std_error))),
             "meses_historia": n,
-            "precio_promedio": round(float(p_mean)),
-            "precio_actual": round(float(precios[-1])),
+            "precio_promedio": int(round(p_mean_float)),
+            "precio_actual": int(round(float(precios[-1]))),
         },
     }
