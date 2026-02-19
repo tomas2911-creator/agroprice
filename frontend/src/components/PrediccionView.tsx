@@ -5,7 +5,15 @@ import {
   ReferenceLine
 } from 'recharts';
 import { getMercados, getProductos, getSubcategorias, getPrediccion } from '../services/api';
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, BarChart3, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, AlertTriangle, BarChart3, Calendar, Cpu } from 'lucide-react';
+
+type Granularidad = 'diario' | 'semanal' | 'mensual';
+
+const HORIZONTE_OPCIONES: Record<Granularidad, { value: number; label: string }[]> = {
+  diario:  [{ value: 7, label: '7 días' }, { value: 14, label: '14 días' }, { value: 30, label: '30 días' }, { value: 60, label: '60 días' }],
+  semanal: [{ value: 4, label: '4 sem' }, { value: 8, label: '8 sem' }, { value: 13, label: '13 sem' }, { value: 26, label: '26 sem' }],
+  mensual: [{ value: 3, label: '3 meses' }, { value: 6, label: '6 meses' }, { value: 12, label: '12 meses' }, { value: 24, label: '24 meses' }],
+};
 
 const MESES_NOMBRE = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
@@ -14,7 +22,8 @@ export default function PrediccionView() {
   const [productos, setProductos] = useState<any[]>([]);
   const [selectedProducto, setSelectedProducto] = useState('');
   const [selectedMercados, setSelectedMercados] = useState<string[]>([]);
-  const [mesesFuturo, setMesesFuturo] = useState(12);
+  const [granularidad, setGranularidad] = useState<Granularidad>('mensual');
+  const [horizonte, setHorizonte] = useState(12);
   const [searchProd, setSearchProd] = useState('');
   const [subcats, setSubcats] = useState<{variedades: string[], calidades: string[], unidades: string[]}>({variedades: [], calidades: [], unidades: []});
   const [selVariedad, setSelVariedad] = useState('');
@@ -31,6 +40,12 @@ export default function PrediccionView() {
     getSubcategorias(nombre).then(setSubcats).catch(console.error);
   };
 
+  // Al cambiar granularidad, ajustar horizonte al default
+  const changeGranularidad = (g: Granularidad) => {
+    setGranularidad(g);
+    setHorizonte(HORIZONTE_OPCIONES[g][2].value); // Tercer opción por defecto
+  };
+
   useEffect(() => {
     Promise.all([getMercados(), getProductos()])
       .then(([m, p]) => { setMercados(m); setProductos(p); })
@@ -43,7 +58,8 @@ export default function PrediccionView() {
     setHasSearched(true);
     getPrediccion({
       producto: selectedProducto,
-      meses_futuro: mesesFuturo,
+      horizonte,
+      granularidad,
       mercados: selectedMercados.length ? selectedMercados : undefined,
       variedad: selVariedad || undefined,
       calidad: selCalidad || undefined,
@@ -54,27 +70,33 @@ export default function PrediccionView() {
       .finally(() => setLoading(false));
   };
 
+  // Formatear fecha según granularidad
+  const formatPeriodo = (p: string) => {
+    if (granularidad === 'mensual') return p.substring(0, 7);
+    if (granularidad === 'semanal') return p.substring(0, 10);
+    return p.substring(0, 10);
+  };
+
   // Combinar histórico + predicción para el gráfico principal
   const mainChartData = useMemo(() => {
     if (!result) return [];
     const hist = (result.historico || []).map((h: any) => ({
-      mes: h.mes.substring(0, 7),
+      periodo: formatPeriodo(h.periodo),
       precio_real: h.precio_promedio,
-      tendencia: h.tendencia,
+      ajustado: h.ajustado,
     }));
     const pred = (result.prediccion || []).map((p: any) => ({
-      mes: p.mes.substring(0, 7),
+      periodo: formatPeriodo(p.periodo),
       precio_predicho: p.precio_predicho,
       banda_min: p.precio_min,
       banda_max: p.precio_max,
     }));
-    // Punto de unión
+    // Punto de unión: última observación conecta con primera predicción
     if (hist.length > 0 && pred.length > 0) {
-      const last = hist[hist.length - 1];
-      pred[0].precio_real = last.precio_real;
+      pred[0].precio_real = hist[hist.length - 1].precio_real;
     }
     return [...hist, ...pred];
-  }, [result]);
+  }, [result, granularidad]);
 
   // Datos de estacionalidad
   const estacionalidadData = useMemo(() => {
@@ -91,13 +113,14 @@ export default function PrediccionView() {
 
   const tendencia = result?.tendencia;
   const metricas = result?.metricas;
+  const granLabel = granularidad === 'diario' ? 'Diario' : granularidad === 'semanal' ? 'Semanal' : 'Mensual';
 
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-bold text-gray-900">Predicción de Precios</h2>
 
       <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-4">
           {/* Producto */}
           <div>
             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Producto</label>
@@ -169,26 +192,43 @@ export default function PrediccionView() {
             </div>
           </div>
 
-          {/* Horizonte */}
+          {/* Granularidad */}
           <div className="space-y-2">
             <div>
-              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Horizonte</label>
-              <div className="flex gap-1 mt-1 flex-wrap">
-                {[3, 6, 12, 24].map((m) => (
-                  <button key={m} onClick={() => setMesesFuturo(m)}
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Predicción</label>
+              <div className="flex gap-1 mt-1">
+                {(['diario', 'semanal', 'mensual'] as Granularidad[]).map((g) => (
+                  <button key={g} onClick={() => changeGranularidad(g)}
                     className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors
-                      ${mesesFuturo === m
+                      ${granularidad === g
                         ? 'bg-agro-600 text-white border-agro-600'
                         : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
                   >
-                    {m} meses
+                    {g === 'diario' ? 'Diaria' : g === 'semanal' ? 'Semanal' : 'Mensual'}
                   </button>
                 ))}
               </div>
             </div>
             <div className="text-[11px] text-gray-400 flex items-center gap-1">
               <AlertTriangle size={11} />
-              Predicción estadística basada en datos históricos
+              Predicción estadística (Holt-Winters)
+            </div>
+          </div>
+
+          {/* Horizonte */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Horizonte</label>
+            <div className="flex gap-1 mt-1 flex-wrap">
+              {HORIZONTE_OPCIONES[granularidad].map((o) => (
+                <button key={o.value} onClick={() => setHorizonte(o.value)}
+                  className={`flex-1 px-1.5 py-1.5 text-xs font-medium rounded-lg border transition-colors
+                    ${horizonte === o.value
+                      ? 'bg-agro-600 text-white border-agro-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                >
+                  {o.label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -217,7 +257,7 @@ export default function PrediccionView() {
         {result && !result.error && (
           <div className="space-y-6 mt-6">
             {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
               <KpiCard
                 label="Precio Actual"
                 value={`$${metricas?.precio_actual?.toLocaleString()}`}
@@ -231,21 +271,30 @@ export default function PrediccionView() {
                 icon={tendencia?.direccion === 'alza' ? TrendingUp : tendencia?.direccion === 'baja' ? TrendingDown : Minus}
               />
               <KpiCard
-                label="Cambio Mensual"
-                value={`$${tendencia?.cambio_mensual > 0 ? '+' : ''}${tendencia?.cambio_mensual?.toLocaleString()}`}
-                color={tendencia?.cambio_mensual >= 0 ? 'green' : 'red'}
+                label="Modelo"
+                value={metricas?.modelo?.replace(' (optimizado)', '').replace(' (conservador)', '') || '—'}
+                sub={metricas?.modelo?.includes('optimizado') ? 'Optimizado' : metricas?.modelo?.includes('conservador') ? 'Conservador' : ''}
+                icon={Cpu}
+                color="purple"
               />
               <KpiCard
-                label="Meses Historia"
-                value={metricas?.meses_historia}
+                label="Períodos Historia"
+                value={metricas?.periodos_historia}
+                sub={granLabel}
                 icon={Calendar}
-                color="purple"
+                color="gray"
               />
               <KpiCard
                 label="Precisión (R²)"
                 value={`${(metricas?.r_squared * 100).toFixed(0)}%`}
                 sub={`MAPE: ${metricas?.mape}%`}
                 color={metricas?.r_squared > 0.7 ? 'green' : metricas?.r_squared > 0.4 ? 'amber' : 'red'}
+              />
+              <KpiCard
+                label="Error CV"
+                value={`${metricas?.cv_mape?.toFixed(1)}%`}
+                sub="Cross-validation"
+                color={metricas?.cv_mape < 15 ? 'green' : metricas?.cv_mape < 30 ? 'amber' : 'red'}
               />
               <KpiCard
                 label="Precio Promedio"
@@ -257,19 +306,24 @@ export default function PrediccionView() {
 
             {/* Gráfico principal */}
             <div className="bg-white rounded-lg border border-gray-100 p-4">
-              <h3 className="font-semibold text-gray-900 mb-3">
-                {selectedProducto} — Histórico y Predicción de Precios
-              </h3>
+              <div className="flex items-baseline justify-between mb-3">
+                <h3 className="font-semibold text-gray-900">
+                  {selectedProducto} — Histórico y Predicción ({granLabel})
+                </h3>
+                <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                  {metricas?.modelo}
+                </span>
+              </div>
               <ResponsiveContainer width="100%" height={400}>
                 <ComposedChart data={mainChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="mes" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={50} />
+                  <XAxis dataKey="periodo" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={55} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${Number(v).toLocaleString()}`} />
                   <Tooltip
                     formatter={(value: number, name: string) => {
                       const labels: Record<string, string> = {
                         precio_real: 'Precio Real',
-                        tendencia: 'Tendencia',
+                        ajustado: 'Modelo Ajustado',
                         precio_predicho: 'Predicción',
                         banda_min: 'Banda Inferior',
                         banda_max: 'Banda Superior',
@@ -281,7 +335,7 @@ export default function PrediccionView() {
                     formatter={(value) => {
                       const labels: Record<string, string> = {
                         precio_real: 'Precio Real',
-                        tendencia: 'Tendencia',
+                        ajustado: 'Modelo Ajustado',
                         precio_predicho: 'Predicción',
                         banda_min: 'Banda Inferior',
                         banda_max: 'Banda Superior',
@@ -294,8 +348,8 @@ export default function PrediccionView() {
                   <Area type="monotone" dataKey="banda_min" stroke="none" fill="#ffffff" fillOpacity={1} legendType="none" />
                   <Line type="monotone" dataKey="banda_max" stroke="#22c55e" strokeWidth={1} strokeDasharray="4 4" dot={false} />
                   <Line type="monotone" dataKey="banda_min" stroke="#22c55e" strokeWidth={1} strokeDasharray="4 4" dot={false} />
-                  {/* Tendencia */}
-                  <Line type="monotone" dataKey="tendencia" stroke="#94a3b8" strokeWidth={1} strokeDasharray="6 3" dot={false} />
+                  {/* Modelo ajustado */}
+                  <Line type="monotone" dataKey="ajustado" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="6 3" dot={false} />
                   {/* Precio real */}
                   <Line type="monotone" dataKey="precio_real" stroke="#3b82f6" strokeWidth={2.5} dot={false} connectNulls />
                   {/* Predicción */}
@@ -335,7 +389,7 @@ export default function PrediccionView() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 sticky top-0">
                       <tr>
-                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Mes</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Período</th>
                         <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Precio Est.</th>
                         <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Rango</th>
                         <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Vol. Est.</th>
@@ -344,11 +398,18 @@ export default function PrediccionView() {
                     </thead>
                     <tbody>
                       {(result.prediccion || []).map((p: any, i: number) => {
-                        const mesDate = new Date(p.mes + 'T12:00:00');
-                        const mesLabel = mesDate.toLocaleDateString('es-CL', { month: 'short', year: 'numeric' });
+                        const d = new Date(p.periodo + 'T12:00:00');
+                        let label = '';
+                        if (granularidad === 'mensual') {
+                          label = d.toLocaleDateString('es-CL', { month: 'short', year: 'numeric' });
+                        } else if (granularidad === 'semanal') {
+                          label = `Sem. ${d.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}`;
+                        } else {
+                          label = d.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' });
+                        }
                         return (
                           <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                            <td className="px-3 py-2 font-medium text-gray-700 capitalize">{mesLabel}</td>
+                            <td className="px-3 py-2 font-medium text-gray-700 capitalize">{label}</td>
                             <td className="px-3 py-2 text-right font-mono font-semibold text-gray-900">
                               ${p.precio_predicho?.toLocaleString()}
                             </td>
@@ -391,13 +452,12 @@ export default function PrediccionView() {
 
             {/* Disclaimer */}
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-500">
-              <strong>Nota:</strong> Esta predicción se basa en un modelo de descomposición estacional + tendencia lineal
-              aplicado a los datos históricos de ODEPA. Los precios reales pueden variar significativamente debido a
-              factores climáticos, económicos, de oferta/demanda y otros eventos no modelados. Use esta información
-              como referencia, no como garantía de precios futuros.
+              <strong>Nota:</strong> Predicción basada en el modelo {metricas?.modelo} aplicado a datos históricos de ODEPA.
+              Los precios reales pueden variar por factores climáticos, económicos y de oferta/demanda.
+              Use como referencia, no como garantía.
               {metricas?.r_squared < 0.4 && (
                 <span className="text-amber-600 font-medium ml-1">
-                  ⚠ El modelo tiene baja precisión para este producto (R² = {metricas?.r_squared}). Los resultados deben interpretarse con cautela.
+                  El modelo tiene precisión limitada para este producto (R² = {(metricas?.r_squared * 100).toFixed(0)}%). Interprete con cautela.
                 </span>
               )}
             </div>

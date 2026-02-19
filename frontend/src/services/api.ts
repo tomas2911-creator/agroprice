@@ -90,19 +90,21 @@ export const getSerieTemporal = (params: {
 // Predicción de precios
 export const getPrediccion = (params: {
   producto: string;
-  meses_futuro?: number;
+  horizonte?: number;
   mercados?: string[];
   variedad?: string;
   calidad?: string;
   unidad?: string;
+  granularidad?: string;
 }) => {
   const sp = new URLSearchParams();
   sp.set('producto', params.producto);
-  if (params.meses_futuro) sp.set('meses_futuro', String(params.meses_futuro));
+  if (params.horizonte) sp.set('horizonte', String(params.horizonte));
   if (params.mercados?.length) sp.set('mercados', params.mercados.join(','));
   if (params.variedad) sp.set('variedad', params.variedad);
   if (params.calidad) sp.set('calidad', params.calidad);
   if (params.unidad) sp.set('unidad', params.unidad);
+  if (params.granularidad) sp.set('granularidad', params.granularidad);
   return fetchJSON(`/api/prediccion?${sp.toString()}`);
 };
 

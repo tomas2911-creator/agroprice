@@ -189,17 +189,19 @@ async def serie_temporal(
 @app.get("/api/prediccion")
 async def prediccion_precios(
     producto: str,
-    meses_futuro: int = Query(12, ge=1, le=36),
+    horizonte: int = Query(12, ge=1, le=365),
     mercados: Optional[str] = None,
     variedad: Optional[str] = None,
     calidad: Optional[str] = None,
     unidad: Optional[str] = None,
+    granularidad: Optional[str] = "mensual",
 ):
-    """Predicción de precios futuros basada en tendencia + estacionalidad"""
+    """Predicción de precios. granularidad: diario|semanal|mensual"""
     mercados_list = [m.strip() for m in mercados.split(",")] if mercados else None
     return await predecir_precios(
-        producto, meses_futuro, mercados_list,
-        variedad=variedad, calidad=calidad, unidad=unidad
+        producto, horizonte, mercados_list,
+        variedad=variedad, calidad=calidad, unidad=unidad,
+        granularidad=granularidad or "mensual",
     )
 
 
