@@ -23,6 +23,7 @@ from src.climate import (
     get_zonas, get_clima_serie, get_clima_precio_serie,
     get_alertas_clima, get_clima_correlacion
 )
+from src.forecast import predecir_precios
 # Models (usados internamente por scraper/database)
 
 # Logging
@@ -183,6 +184,23 @@ async def serie_temporal(
     return await get_serie_temporal(producto, mercados_list, fecha_inicio, fecha_fin,
                                      variedad=variedad, calidad=calidad, unidad=unidad,
                                      agregacion=agregacion or "diario")
+
+
+@app.get("/api/prediccion")
+async def prediccion_precios(
+    producto: str,
+    meses_futuro: int = Query(12, ge=1, le=36),
+    mercados: Optional[str] = None,
+    variedad: Optional[str] = None,
+    calidad: Optional[str] = None,
+    unidad: Optional[str] = None,
+):
+    """Predicción de precios futuros basada en tendencia + estacionalidad"""
+    mercados_list = [m.strip() for m in mercados.split(",")] if mercados else None
+    return await predecir_precios(
+        producto, meses_futuro, mercados_list,
+        variedad=variedad, calidad=calidad, unidad=unidad
+    )
 
 
 @app.get("/api/spread")

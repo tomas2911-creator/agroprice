@@ -11,6 +11,7 @@ const navItems = [
   { id: 'precios', label: 'Precios', icon: BarChart3 },
   { id: 'variaciones', label: 'Variaciones', icon: TrendingUp },
   { id: 'serie-temporal', label: 'Serie Temporal', icon: Activity },
+  { id: 'prediccion', label: 'Predicción', icon: TrendingUp },
   { id: 'spread', label: 'Spread Mercados', icon: Map },
   { id: 'volatilidad', label: 'Volatilidad', icon: Flame },
   { id: 'estacionalidad', label: 'Estacionalidad', icon: CalendarDays },

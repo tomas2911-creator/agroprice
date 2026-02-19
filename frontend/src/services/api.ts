@@ -87,6 +87,25 @@ export const getSerieTemporal = (params: {
   return fetchJSON(`/api/serie-temporal?${sp.toString()}`);
 };
 
+// Predicción de precios
+export const getPrediccion = (params: {
+  producto: string;
+  meses_futuro?: number;
+  mercados?: string[];
+  variedad?: string;
+  calidad?: string;
+  unidad?: string;
+}) => {
+  const sp = new URLSearchParams();
+  sp.set('producto', params.producto);
+  if (params.meses_futuro) sp.set('meses_futuro', String(params.meses_futuro));
+  if (params.mercados?.length) sp.set('mercados', params.mercados.join(','));
+  if (params.variedad) sp.set('variedad', params.variedad);
+  if (params.calidad) sp.set('calidad', params.calidad);
+  if (params.unidad) sp.set('unidad', params.unidad);
+  return fetchJSON(`/api/prediccion?${sp.toString()}`);
+};
+
 // Spread entre mercados
 export const getSpread = (fecha?: string) =>
   fetchJSON(`/api/spread${fecha ? `?fecha=${fecha}` : ''}`);
