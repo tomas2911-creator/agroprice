@@ -13,38 +13,51 @@ from src.database import insertar_precios, registrar_importacion, boletin_ya_imp
 logger = logging.getLogger("agroprice.scraper")
 
 
-def generar_url_boletin(fecha: date) -> str:
-    """Generar URL del boletín Excel para una fecha dada"""
+def generar_urls_boletin(fecha: date) -> list[str]:
+    """Generar URLs posibles del boletín Excel para una fecha dada.
+    ODEPA cambió el formato del nombre en feb 2026:
+    - Viejo: Boletin_Diario_de_Frutas_y_Hortalizas_YYYYMMDD.xlsx
+    - Nuevo: BoletinDiarioFrutas_y_Hortalizas_DDMMYYYY.xlsx
+    Retorna ambas URLs para probar."""
     anio = fecha.strftime("%Y")
     mes = fecha.strftime("%m")
-    fecha_str = fecha.strftime("%Y%m%d")
-    return f"{ODEPA_BASE_URL}/{anio}/{mes}/Boletin_Diario_de_Frutas_y_Hortalizas_{fecha_str}.xlsx"
+    base = f"{ODEPA_BASE_URL}/{anio}/{mes}"
+    fecha_viejo = fecha.strftime("%Y%m%d")  # YYYYMMDD
+    fecha_nuevo = fecha.strftime("%d%m%Y")  # DDMMYYYY
+    return [
+        f"{base}/BoletinDiarioFrutas_y_Hortalizas_{fecha_nuevo}.xlsx",
+        f"{base}/Boletin_Diario_de_Frutas_y_Hortalizas_{fecha_viejo}.xlsx",
+    ]
 
 
 async def descargar_boletin(fecha: date) -> Optional[bytes]:
-    """Descargar el archivo Excel del boletín"""
-    url = generar_url_boletin(fecha)
-    logger.info(f"Descargando boletín: {url}")
+    """Descargar el archivo Excel del boletín, probando múltiples formatos de URL"""
+    urls = generar_urls_boletin(fecha)
 
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        try:
-            response = await client.get(url)
-            if response.status_code == 200:
-                content_type = response.headers.get("content-type", "")
-                if "html" in content_type.lower():
-                    logger.warning(f"Boletín {fecha}: respuesta HTML en vez de Excel (probablemente no existe)")
-                    return None
-                logger.info(f"Boletín {fecha}: descargado ({len(response.content)} bytes)")
-                return response.content
-            elif response.status_code == 404:
-                logger.info(f"Boletín {fecha}: no disponible (404)")
-                return None
-            else:
-                logger.warning(f"Boletín {fecha}: HTTP {response.status_code}")
-                return None
-        except Exception as e:
-            logger.error(f"Error descargando boletín {fecha}: {e}")
-            return None
+        for url in urls:
+            try:
+                logger.info(f"Intentando boletín {fecha}: {url}")
+                response = await client.get(url)
+                if response.status_code == 200:
+                    content_type = response.headers.get("content-type", "")
+                    if "html" in content_type.lower():
+                        logger.info(f"Boletín {fecha}: respuesta HTML en {url} (no es Excel, probando siguiente)")
+                        continue
+                    logger.info(f"Boletín {fecha}: descargado OK desde {url} ({len(response.content)} bytes)")
+                    return response.content
+                elif response.status_code == 404:
+                    logger.info(f"Boletín {fecha}: 404 en {url}, probando siguiente")
+                    continue
+                else:
+                    logger.info(f"Boletín {fecha}: HTTP {response.status_code} en {url}, probando siguiente")
+                    continue
+            except Exception as e:
+                logger.warning(f"Error descargando {url}: {e}")
+                continue
+
+    logger.warning(f"Boletín {fecha}: no disponible en ningún formato")
+    return None
 
 
 def parsear_excel(contenido: bytes, fecha: date) -> list[dict]:
