@@ -15,16 +15,18 @@ logger = logging.getLogger("agroprice.scraper")
 
 def generar_urls_boletin(fecha: date) -> list[str]:
     """Generar URLs posibles del boletín Excel para una fecha dada.
-    ODEPA cambió el formato del nombre en feb 2026:
-    - Viejo: Boletin_Diario_de_Frutas_y_Hortalizas_YYYYMMDD.xlsx
-    - Nuevo: BoletinDiarioFrutas_y_Hortalizas_DDMMYYYY.xlsx
-    Retorna ambas URLs para probar."""
+    ODEPA ha cambiado el formato varias veces:
+    - v1: Boletin_Diario_de_Frutas_y_Hortalizas_YYYYMMDD.xlsx
+    - v2 (feb 2026): BoletinDiarioFrutas_y_Hortalizas_DDMMYYYY.xlsx
+    - v3 (~19 feb 2026): BoletinDiarioFrutas-y-Hortalizas_DDMMYYYY.xlsx
+    Retorna todas las URLs para probar (más reciente primero)."""
     anio = fecha.strftime("%Y")
     mes = fecha.strftime("%m")
     base = f"{ODEPA_BASE_URL}/{anio}/{mes}"
     fecha_viejo = fecha.strftime("%Y%m%d")  # YYYYMMDD
     fecha_nuevo = fecha.strftime("%d%m%Y")  # DDMMYYYY
     return [
+        f"{base}/BoletinDiarioFrutas-y-Hortalizas_{fecha_nuevo}.xlsx",
         f"{base}/BoletinDiarioFrutas_y_Hortalizas_{fecha_nuevo}.xlsx",
         f"{base}/Boletin_Diario_de_Frutas_y_Hortalizas_{fecha_viejo}.xlsx",
     ]
