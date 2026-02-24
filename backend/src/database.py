@@ -240,6 +240,15 @@ async def boletin_ya_importado(fecha: date) -> bool:
         return row is not None
 
 
+async def get_ultima_fecha_importada() -> Optional[date]:
+    """Obtener la fecha del último boletín importado exitosamente"""
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT MAX(fecha_boletin) as ultima FROM importaciones WHERE estado = 'ok'"
+        )
+        return row["ultima"] if row and row["ultima"] else None
+
+
 # ============== QUERIES PARA EL DASHBOARD ==============
 
 async def get_mercados() -> list[dict]:

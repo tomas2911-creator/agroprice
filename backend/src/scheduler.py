@@ -1,9 +1,11 @@
 import logging
+from datetime import date, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from src.scraper import importar_hoy
+from src.scraper import importar_hoy, importar_boletin
 from src.climate import importar_clima_diario
+from src.database import get_ultima_fecha_importada
 
 logger = logging.getLogger("agroprice.scheduler")
 
@@ -72,6 +74,58 @@ async def _tarea_clima():
         logger.info(f"Clima diario: {resultado}")
     except Exception as e:
         logger.error(f"Error en importación clima diario: {e}")
+
+
+async def catch_up_importaciones():
+    """Importar boletines faltantes desde la última importación exitosa.
+    Se ejecuta al startup para recuperar días perdidos por reinicios."""
+    try:
+        ultima = await get_ultima_fecha_importada()
+        if ultima is None:
+            logger.info("Catch-up: no hay importaciones previas, nada que recuperar")
+            return
+
+        hoy = date.today()
+        if ultima >= hoy:
+            logger.info(f"Catch-up: datos al día (última={ultima})")
+            return
+
+        # Generar lista de días hábiles faltantes
+        faltantes = []
+        dia = ultima + timedelta(days=1)
+        while dia <= hoy:
+            if dia.weekday() < 5:  # Solo lunes a viernes
+                faltantes.append(dia)
+            dia += timedelta(days=1)
+
+        if not faltantes:
+            logger.info(f"Catch-up: no hay días hábiles faltantes (última={ultima})")
+            return
+
+        logger.info(f"Catch-up: importando {len(faltantes)} días faltantes ({faltantes[0]} → {faltantes[-1]})")
+        ok = 0
+        registros_total = 0
+        for fecha in faltantes:
+            try:
+                resultado = await importar_boletin(fecha)
+                if resultado["estado"] == "ok":
+                    ok += 1
+                    registros_total += resultado["registros"]
+                logger.info(f"  Catch-up {fecha}: {resultado['estado']} ({resultado['registros']} reg)")
+            except Exception as e:
+                logger.error(f"  Catch-up {fecha}: error {e}")
+
+        logger.info(f"Catch-up completado: {ok}/{len(faltantes)} boletines, {registros_total} registros")
+
+        # También importar clima de los días faltantes
+        try:
+            resultado_clima = await importar_clima_diario()
+            logger.info(f"Catch-up clima: {resultado_clima}")
+        except Exception as e:
+            logger.error(f"Catch-up clima falló: {e}")
+
+    except Exception as e:
+        logger.error(f"Catch-up error general: {e}")
 
 
 def detener_scheduler():

@@ -17,7 +17,7 @@ from src.database import (
     get_fechas_disponibles
 )
 from src.scraper import importar_boletin, importar_historico
-from src.scheduler import iniciar_scheduler, detener_scheduler
+from src.scheduler import iniciar_scheduler, detener_scheduler, catch_up_importaciones
 from src.climate import (
     seed_zonas, importar_clima_todas_zonas, importar_clima_historico,
     get_zonas, get_clima_serie, get_clima_precio_serie,
@@ -32,6 +32,15 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s"
 )
 logger = logging.getLogger("agroprice")
+
+
+async def _catch_up_on_startup():
+    """Background task: importar boletines perdidos desde la última importación exitosa."""
+    try:
+        await asyncio.sleep(3)
+        await catch_up_importaciones()
+    except Exception as e:
+        logger.error(f"Catch-up on startup falló: {e}")
 
 
 async def _auto_setup_clima():
@@ -60,9 +69,11 @@ async def lifespan(app: FastAPI):
         await seed_zonas()
     except Exception as e:
         logger.warning(f"Seed zonas fallido (productos aún no importados?): {e}")
+    # Catch-up: importar boletines perdidos desde la última importación exitosa
+    asyncio.create_task(_catch_up_on_startup())
     # Lanzar auto-setup de clima como tarea en background (no bloquea el startup)
     asyncio.create_task(_auto_setup_clima())
-    logger.info("AgroPrice iniciado (clima importándose en background)")
+    logger.info("AgroPrice iniciado (catch-up + clima importándose en background)")
     yield
     detener_scheduler()
     await close_db()
