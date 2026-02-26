@@ -13,12 +13,17 @@ from src.database import insertar_precios, registrar_importacion, boletin_ya_imp
 logger = logging.getLogger("agroprice.scraper")
 
 
+# URL de la página ODEPA donde se publica el boletín diario
+ODEPA_BOLETIN_PAGE = "https://www.odepa.gob.cl/contenidos-rubro/boletines/boletin-diario-de-precios-y-volumenes-de-frutas-en-mercados-mayoristas"
+
+
 def generar_urls_boletin(fecha: date) -> list[str]:
     """Generar URLs posibles del boletín Excel para una fecha dada.
     ODEPA ha cambiado el formato varias veces:
     - v1: Boletin_Diario_de_Frutas_y_Hortalizas_YYYYMMDD.xlsx
     - v2 (feb 2026): BoletinDiarioFrutas_y_Hortalizas_DDMMYYYY.xlsx
     - v3 (~19 feb 2026): BoletinDiarioFrutas-y-Hortalizas_DDMMYYYY.xlsx
+    - v4 (~25 feb 2026): BoletinDiarioFrutasHortalizas_DDMMYYYY.xlsx
     Retorna todas las URLs para probar (más reciente primero)."""
     anio = fecha.strftime("%Y")
     mes = fecha.strftime("%m")
@@ -26,14 +31,36 @@ def generar_urls_boletin(fecha: date) -> list[str]:
     fecha_viejo = fecha.strftime("%Y%m%d")  # YYYYMMDD
     fecha_nuevo = fecha.strftime("%d%m%Y")  # DDMMYYYY
     return [
+        f"{base}/BoletinDiarioFrutasHortalizas_{fecha_nuevo}.xlsx",
         f"{base}/BoletinDiarioFrutas-y-Hortalizas_{fecha_nuevo}.xlsx",
         f"{base}/BoletinDiarioFrutas_y_Hortalizas_{fecha_nuevo}.xlsx",
         f"{base}/Boletin_Diario_de_Frutas_y_Hortalizas_{fecha_viejo}.xlsx",
     ]
 
 
+async def descubrir_url_boletin(fecha: date) -> Optional[str]:
+    """Descubrir la URL del boletín scrapeando la página de ODEPA.
+    Fallback cuando los patrones estáticos no funcionan."""
+    fecha_str = fecha.strftime("%d%m%Y")
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            resp = await client.get(ODEPA_BOLETIN_PAGE)
+            if resp.status_code != 200:
+                return None
+            # Buscar enlaces .xlsx que contengan la fecha
+            urls = re.findall(r'href="([^"]*\.xlsx[^"]*)"', resp.text, re.IGNORECASE)
+            for url in urls:
+                if fecha_str in url:
+                    logger.info(f"Descubrimiento dinámico: encontrada URL para {fecha}: {url}")
+                    return url
+    except Exception as e:
+        logger.warning(f"Error en descubrimiento dinámico para {fecha}: {e}")
+    return None
+
+
 async def descargar_boletin(fecha: date) -> Optional[bytes]:
-    """Descargar el archivo Excel del boletín, probando múltiples formatos de URL"""
+    """Descargar el archivo Excel del boletín, probando múltiples formatos de URL.
+    Si los patrones estáticos fallan, intenta descubrir la URL dinámicamente."""
     urls = generar_urls_boletin(fecha)
 
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
@@ -57,6 +84,21 @@ async def descargar_boletin(fecha: date) -> Optional[bytes]:
             except Exception as e:
                 logger.warning(f"Error descargando {url}: {e}")
                 continue
+
+    # Fallback: descubrimiento dinámico scrapeando la página de ODEPA
+    logger.info(f"Boletín {fecha}: patrones estáticos fallaron, intentando descubrimiento dinámico")
+    url_descubierta = await descubrir_url_boletin(fecha)
+    if url_descubierta:
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(url_descubierta)
+                if response.status_code == 200:
+                    content_type = response.headers.get("content-type", "")
+                    if "html" not in content_type.lower():
+                        logger.info(f"Boletín {fecha}: descargado OK vía descubrimiento dinámico ({len(response.content)} bytes)")
+                        return response.content
+        except Exception as e:
+            logger.warning(f"Error descargando URL descubierta {url_descubierta}: {e}")
 
     logger.warning(f"Boletín {fecha}: no disponible en ningún formato")
     return None
